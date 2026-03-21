@@ -162,6 +162,10 @@ pub fn respond_enable(state: &AppState, root: PathBuf, enable: bool) -> Result<(
         if !enable {
             e.asked_existing_git = false;
             e.use_existing_git = None;
+        } else if had_git && e.use_existing_git != Some(true) {
+            // Allow the "use this .git for PaperDesk history?" prompt again after the user
+            // declined or is re-enabling from the toolbar.
+            e.asked_existing_git = false;
         }
     })?;
 

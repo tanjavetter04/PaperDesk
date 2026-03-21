@@ -208,6 +208,7 @@ export const messageKeys = [
   "history.restoreMessage",
   "history.restoreConfirm",
   "history.toolbar",
+  "history.toolbarEnable",
 ] as const;
 
 export type MessageKey = (typeof messageKeys)[number];
@@ -450,6 +451,7 @@ const de: Table = {
     "Der ausgewählte Checkpoint wird in das Arbeitsverzeichnis geschrieben (bestehende Dateien werden überschrieben). Fortfahren?",
   "history.restoreConfirm": "Wiederherstellen",
   "history.toolbar": "Verlauf",
+  "history.toolbarEnable": "Git & Verlauf aktivieren oder Verlauf öffnen",
 };
 
 const en: Table = {
@@ -683,6 +685,7 @@ const en: Table = {
     "The selected checkpoint will be written to the working tree (existing files will be overwritten). Continue?",
   "history.restoreConfirm": "Restore",
   "history.toolbar": "History",
+  "history.toolbarEnable": "Enable Git history or open history",
 };
 
 export const messages: Record<Locale, Table> = { de, en };

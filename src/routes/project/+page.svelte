@@ -705,7 +705,20 @@
     clearHistoryIdleTimer();
     await syncHistoryStatus(false);
     if (!historyActive) {
-      showMessage(t("history.inactiveToast"));
+      const s = historyStatus;
+      if (!s) {
+        showMessage(t("history.inactiveToast"));
+        return;
+      }
+      if (s.promptEnable) {
+        historyPromptEnableOpen = true;
+        return;
+      }
+      if (s.promptExistingGit) {
+        historyPromptExistingOpen = true;
+        return;
+      }
+      historyPromptEnableOpen = true;
       return;
     }
     historyPanelOpen = true;
@@ -1255,8 +1268,8 @@
       type="button"
       class="bar-icon-action"
       onclick={() => void toggleHistoryPanel()}
-      title={t("history.toolbar")}
-      aria-label={t("history.toolbar")}
+      title={historyActive ? t("history.toolbar") : t("history.toolbarEnable")}
+      aria-label={historyActive ? t("history.toolbar") : t("history.toolbarEnable")}
       aria-pressed={historyPanelOpen}
     >
       <svg
