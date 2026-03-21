@@ -35,6 +35,14 @@ export async function openProject(path: string): Promise<void> {
   return invoke("open_project", { path });
 }
 
+/** Renames the project directory (folder name). Returns the new absolute path. */
+export async function renameProject(
+  path: string,
+  newName: string,
+): Promise<string> {
+  return invoke("rename_project", { path, newName });
+}
+
 export async function getOpenProject(): Promise<string | null> {
   return invoke("get_open_project");
 }
@@ -135,16 +143,21 @@ export async function exportPdf(saveDialogTitle = "Export PDF"): Promise<void> {
 
 export async function createFromTemplate(
   templateId: string,
-  targetDir: string,
+  parentDir: string,
+  projectName: string,
 ): Promise<string> {
   return invoke("create_from_template", {
     templateId,
-    targetDir,
+    parentDir,
+    projectName,
   });
 }
 
-export async function createEmptyProject(targetDir: string): Promise<string> {
-  return invoke("create_empty_project", { targetDir });
+export async function createEmptyProject(
+  parentDir: string,
+  projectName: string,
+): Promise<string> {
+  return invoke("create_empty_project", { parentDir, projectName });
 }
 
 // --- Project history (Git, refs/paperdesk/history) ---

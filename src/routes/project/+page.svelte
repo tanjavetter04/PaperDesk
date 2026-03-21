@@ -12,6 +12,7 @@
   import HistoryPanel from "$lib/components/HistoryPanel.svelte";
   import {
     getOpenProject,
+    renameProject,
     listProjectEntries,
     writeTextFile,
     createProjectDir,
@@ -62,6 +63,7 @@
 
   let newFileModalOpen = $state(false);
   let newFolderModalOpen = $state(false);
+  let projectRenameModalOpen = $state(false);
   let messageModalOpen = $state(false);
   let messageModalText = $state("");
   let bibConflictModalOpen = $state(false);
@@ -461,6 +463,13 @@
   function parentDirOfRel(path: string): string {
     const i = path.lastIndexOf("/");
     return i === -1 ? "" : path.slice(0, i);
+  }
+
+  function projectFolderLabel(absolutePath: string): string {
+    const n = absolutePath.trim().replace(/\\/g, "/").replace(/\/+$/, "");
+    if (!n || n === "/") return absolutePath;
+    const parts = n.split("/").filter(Boolean);
+    return parts.length ? parts[parts.length - 1]! : absolutePath;
   }
 
   function newItemHint(): string {
@@ -863,6 +872,31 @@
     saveLabel = "saved";
   }
 
+  async function confirmProjectRename(name: string) {
+    const root = rootPath;
+    if (!root) return;
+    if (saveTimer) {
+      clearTimeout(saveTimer);
+      saveTimer = null;
+    }
+    if (selectedPath) {
+      try {
+        await flushPathToDisk(selectedPath, buffer);
+      } catch {
+        /* best effort before rename */
+      }
+    }
+    try {
+      const next = await renameProject(root, name);
+      rootPath = next;
+      projectRenameModalOpen = false;
+      await ensurePreview(true);
+      await syncHistoryStatus(false);
+    } catch (e) {
+      showMessage(formatUserError(e));
+    }
+  }
+
   async function goHub() {
     if (saveTimer) clearTimeout(saveTimer);
     if (selectedPath) {
@@ -960,6 +994,28 @@
   <header class="bar">
     <button type="button" class="ghost" onclick={goHub}>
       {t("project.backToProjects")}
+    </button>
+    <button
+      type="button"
+      class="ghost proj-rename"
+      onclick={() => (projectRenameModalOpen = true)}
+      title={t("project.renameAria")}
+      aria-label={t("project.renameAria")}
+    >
+      <svg
+        width="18"
+        height="18"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M12 20h9" />
+        <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+      </svg>
     </button>
     <span class="proj" title={rootPath ?? ""}>{rootPath ?? ""}</span>
     <span class="status">
@@ -1086,6 +1142,15 @@
     submitLabel={t("project.create")}
     onClose={() => (newFolderModalOpen = false)}
     onSubmit={(v) => void confirmNewFolder(v)}
+  />
+  <InputModal
+    open={projectRenameModalOpen}
+    title={t("project.renameTitle")}
+    hint={t("project.renameHint")}
+    initialValue={rootPath ? projectFolderLabel(rootPath) : ""}
+    submitLabel={t("project.renameSubmit")}
+    onClose={() => (projectRenameModalOpen = false)}
+    onSubmit={(v) => void confirmProjectRename(v)}
   />
   <MessageModal
     open={messageModalOpen}
@@ -1219,6 +1284,14 @@
 
   .ghost:hover {
     color: var(--pd-text);
+  }
+
+  .proj-rename {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.3rem;
+    flex-shrink: 0;
   }
 
   .proj {

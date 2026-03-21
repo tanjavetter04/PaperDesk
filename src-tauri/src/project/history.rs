@@ -81,6 +81,25 @@ pub fn get_entry(state: &AppState, root: &Path) -> Result<ProjectHistoryEntry, S
         .unwrap_or_default())
 }
 
+/// Move `project_history.json` entry from the old project root path to the new one (after `fs::rename` of the project folder).
+pub fn migrate_path_after_rename(
+    state: &AppState,
+    old_canonical_root: &Path,
+    new_canonical_root: &Path,
+) -> Result<(), String> {
+    let old_key = project_key(old_canonical_root);
+    let new_key = project_key(new_canonical_root);
+    if old_key == new_key {
+        return Ok(());
+    }
+    let mut store = load_store(state)?;
+    if let Some(entry) = store.projects.remove(&old_key) {
+        store.projects.insert(new_key, entry);
+        save_store(state, &store)?;
+    }
+    Ok(())
+}
+
 fn update_entry<F>(state: &AppState, root: &Path, f: F) -> Result<ProjectHistoryEntry, String>
 where
     F: FnOnce(&mut ProjectHistoryEntry),

@@ -8,11 +8,15 @@
     displayName,
     busy,
     onclick,
+    onRename,
+    renameAria,
   }: {
     path: string;
     displayName: string;
     busy: boolean;
     onclick: () => void;
+    onRename: () => void;
+    renameAria: string;
   } = $props();
 
   let thumbUrl = $state<string | null>(null);
@@ -76,24 +80,49 @@
 </script>
 
 <li class="recent-item">
-  <button type="button" class="recent-card" disabled={busy} {onclick}>
-    <div class="recent-thumb" aria-hidden="true">
-      {#if thumbPhase === "loading"}
-        <span class="thumb-skel"></span>
-      {:else if thumbUrl}
-        <img src={thumbUrl} alt="" class="thumb-img" />
-      {:else}
-        <span class="thumb-fallback">PDF</span>
-      {/if}
-    </div>
-    <span class="title-stack" class:is-truncated={nameTruncated}>
-      <span class="recent-title" bind:this={titleEl}>{displayName}</span>
-      {#if nameTruncated}
-        <span class="name-tooltip" aria-hidden="true">{displayName}</span>
-      {/if}
-    </span>
-    <span class="recent-path">{path}</span>
-  </button>
+  <div class="recent-row">
+    <button type="button" class="recent-card" disabled={busy} {onclick}>
+      <div class="recent-thumb" aria-hidden="true">
+        {#if thumbPhase === "loading"}
+          <span class="thumb-skel"></span>
+        {:else if thumbUrl}
+          <img src={thumbUrl} alt="" class="thumb-img" />
+        {:else}
+          <span class="thumb-fallback">PDF</span>
+        {/if}
+      </div>
+      <span class="title-stack" class:is-truncated={nameTruncated}>
+        <span class="recent-title" bind:this={titleEl}>{displayName}</span>
+        {#if nameTruncated}
+          <span class="name-tooltip" aria-hidden="true">{displayName}</span>
+        {/if}
+      </span>
+      <span class="recent-path">{path}</span>
+    </button>
+    <button
+      type="button"
+      class="recent-rename"
+      disabled={busy}
+      onclick={onRename}
+      title={renameAria}
+      aria-label={renameAria}
+    >
+      <svg
+        width="18"
+        height="18"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M12 20h9" />
+        <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+      </svg>
+    </button>
+  </div>
 </li>
 
 <style>
@@ -101,6 +130,67 @@
     list-style: none;
     margin: 0;
     min-width: 0;
+  }
+
+  .recent-row {
+    position: relative;
+    display: inline-block;
+    min-width: 0;
+    vertical-align: top;
+  }
+
+  .recent-rename {
+    position: absolute;
+    top: 0.45rem;
+    right: 0.55rem;
+    z-index: 3;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    padding: 0;
+    border-radius: 8px;
+    border: 1px solid var(--pd-border);
+    background: color-mix(in srgb, var(--pd-surface) 92%, transparent);
+    backdrop-filter: blur(6px);
+    color: var(--pd-muted);
+    cursor: pointer;
+    box-shadow: 0 2px 10px rgb(0 0 0 / 0.2);
+    transition:
+      opacity 0.12s ease,
+      visibility 0.12s ease;
+  }
+
+  @media (hover: hover) {
+    .recent-rename {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    .recent-row:hover .recent-rename,
+    .recent-row:focus-within .recent-rename {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+    }
+
+    .recent-row:hover .recent-rename:disabled,
+    .recent-row:focus-within .recent-rename:disabled {
+      opacity: 0.45;
+    }
+  }
+
+  .recent-rename:hover:not(:disabled) {
+    border-color: var(--pd-muted);
+    color: var(--pd-text);
+    background: var(--pd-bg);
+  }
+
+  .recent-rename:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
   }
 
   .recent-card {

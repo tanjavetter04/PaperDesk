@@ -55,7 +55,7 @@
   }
 
   async function chooseDefaultProjectFolder() {
-    const p = await pickProjectFolder(t("dialog.projectFolder"), {
+    const p = await pickProjectFolder(t("dialog.newProjectParentFolder"), {
       defaultPath: appSettings.defaultProjectDir.trim() || undefined,
     });
     if (p) setDefaultProjectDir(p);

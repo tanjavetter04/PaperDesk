@@ -20,7 +20,7 @@ use commands::history_cmd::{
 };
 use commands::project::{
     add_recent_project, close_project, create_empty_project, create_from_template, get_open_project,
-    get_recent_projects, open_project,
+    get_recent_projects, open_project, rename_project,
 };
 use bib_watch::restart_bib_watcher;
 use tinymist_preview::{restart_tinymist_preview, start_tinymist_preview, TinymistSession};
@@ -91,6 +91,7 @@ pub fn run() {
             get_recent_projects,
             add_recent_project,
             open_project,
+            rename_project,
             get_open_project,
             close_project,
             list_project_files,

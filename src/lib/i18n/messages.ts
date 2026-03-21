@@ -23,6 +23,7 @@ export const messageKeys = [
   "project.bibReloadFromDisk",
   "hub.openProjectFolder",
   "hub.newProject",
+  "hub.newProjectsAsSubfolders",
   "hub.thesisTemplate",
   "hub.emptyProject",
   "hub.recentlyOpened",
@@ -36,7 +37,13 @@ export const messageKeys = [
   "hub.projectsInFolder",
   "hub.openProjectToSeeFolders",
   "hub.noParentFolders",
+  "hub.newProjectNameTitleThesis",
+  "hub.newProjectNameTitleEmpty",
+  "hub.newProjectNameHint",
+  "hub.openNotAProject",
   "dialog.projectFolder",
+  "dialog.openProjectFolder",
+  "dialog.newProjectParentFolder",
   "dialog.exportPdf",
   "common.cancel",
   "common.ok",
@@ -85,6 +92,10 @@ export const messageKeys = [
   "project.saveFailed",
   "project.newInFolder",
   "project.newInRoot",
+  "project.renameTitle",
+  "project.renameHint",
+  "project.renameSubmit",
+  "project.renameAria",
 ] as const;
 
 export type MessageKey = (typeof messageKeys)[number];
@@ -104,7 +115,8 @@ const de: Table = {
   "settings.themeDark": "Dunkel",
   "settings.themeLight": "Hell",
   "settings.fontSize": "Schriftgröße (Benutzeroberfläche & Editor)",
-  "settings.defaultProjectFolder": "Standardordner für neue/geöffnete Projekte",
+  "settings.defaultProjectFolder":
+    "Standardordner (übergeordneter Ordner für neue Projekte; Startordner im Dateidialog)",
   "settings.chooseDefaultFolder": "Ordner wählen…",
   "settings.clearDefaultFolder": "Zurücksetzen",
   "settings.defaultFolderNone": "Keiner (Systemstandard)",
@@ -117,6 +129,8 @@ const de: Table = {
   "project.bibReloadFromDisk": "Neu laden",
   "hub.openProjectFolder": "Projektordner öffnen",
   "hub.newProject": "Neues Projekt",
+  "hub.newProjectsAsSubfolders":
+    "Neue Projekte werden als Unterordner des gewählten Ordners angelegt; im Stamm liegt immer main.typ.",
   "hub.thesisTemplate": "Vorlage Abschlussarbeit",
   "hub.emptyProject": "Leeres Projekt",
   "hub.recentlyOpened": "Zuletzt geöffnet",
@@ -132,7 +146,15 @@ const de: Table = {
   "hub.openProjectToSeeFolders":
     "Öffne ein Projekt, um hier Ordner zu sehen.",
   "hub.noParentFolders": "Keine übergeordneten Ordner für zuletzt geöffnete Projekte gefunden.",
+  "hub.newProjectNameTitleThesis": "Name für das neue Projekt (Vorlage)",
+  "hub.newProjectNameTitleEmpty": "Name für das neue Projekt (leer)",
+  "hub.newProjectNameHint":
+    "Es wird ein Unterordner mit diesem Namen angelegt unter: {parent}",
+  "hub.openNotAProject":
+    "Dieser Ordner ist kein PaperDesk-Projekt: Im Projektstamm fehlt die Datei main.typ.",
   "dialog.projectFolder": "Projektordner",
+  "dialog.openProjectFolder": "Projekt wählen (Ordner mit main.typ)",
+  "dialog.newProjectParentFolder": "Übergeordneten Ordner wählen (neues Projekt als Unterordner)",
   "dialog.exportPdf": "PDF exportieren",
   "common.cancel": "Abbrechen",
   "common.ok": "OK",
@@ -183,6 +205,11 @@ const de: Table = {
     "Speichern von „{path}“ ist fehlgeschlagen. Inhalt war nur im Speicher.",
   "project.newInFolder": "Neu in: {folder}",
   "project.newInRoot": "Neu im Projektstamm",
+  "project.renameTitle": "Projekt umbenennen",
+  "project.renameHint":
+    "Der Projektordner auf der Festplatte wird umbenannt (letzter Pfadteil). Git und PaperDesk-Verlauf bleiben am Ordner erhalten.",
+  "project.renameSubmit": "Umbenennen",
+  "project.renameAria": "Projekt umbenennen",
 };
 
 const en: Table = {
@@ -198,7 +225,8 @@ const en: Table = {
   "settings.themeDark": "Dark",
   "settings.themeLight": "Light",
   "settings.fontSize": "Font size (UI & editor)",
-  "settings.defaultProjectFolder": "Default folder for new/open projects",
+  "settings.defaultProjectFolder":
+    "Default parent folder for new projects (initial directory in the folder dialog)",
   "settings.chooseDefaultFolder": "Choose folder…",
   "settings.clearDefaultFolder": "Clear",
   "settings.defaultFolderNone": "None (system default)",
@@ -210,6 +238,8 @@ const en: Table = {
   "project.bibReloadFromDisk": "Reload from disk",
   "hub.openProjectFolder": "Open project folder",
   "hub.newProject": "New project",
+  "hub.newProjectsAsSubfolders":
+    "New projects are created as subfolders of the folder you pick; each project root contains main.typ.",
   "hub.thesisTemplate": "Thesis template",
   "hub.emptyProject": "Empty project",
   "hub.recentlyOpened": "Recently opened",
@@ -224,7 +254,15 @@ const en: Table = {
   "hub.projectsInFolder": "Projects in this folder",
   "hub.openProjectToSeeFolders": "Open a project to see folders here.",
   "hub.noParentFolders": "No parent folders found for recent projects.",
+  "hub.newProjectNameTitleThesis": "Name for the new project (template)",
+  "hub.newProjectNameTitleEmpty": "Name for the new project (empty)",
+  "hub.newProjectNameHint":
+    "A subfolder with this name will be created under: {parent}",
+  "hub.openNotAProject":
+    "This folder is not a PaperDesk project: main.typ is missing in the project root.",
   "dialog.projectFolder": "Project folder",
+  "dialog.openProjectFolder": "Choose project (folder containing main.typ)",
+  "dialog.newProjectParentFolder": "Choose parent folder (new project as a subfolder)",
   "dialog.exportPdf": "Export PDF",
   "common.cancel": "Cancel",
   "common.ok": "OK",
@@ -274,6 +312,11 @@ const en: Table = {
     "Saving “{path}” failed. Content was only in memory.",
   "project.newInFolder": "New in: {folder}",
   "project.newInRoot": "New in project root",
+  "project.renameTitle": "Rename project",
+  "project.renameHint":
+    "Renames the project folder on disk (last path segment). Git and PaperDesk history stay with that folder.",
+  "project.renameSubmit": "Rename",
+  "project.renameAria": "Rename project",
 };
 
 export const messages: Record<Locale, Table> = { de, en };
