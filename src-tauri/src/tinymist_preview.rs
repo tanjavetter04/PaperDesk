@@ -1,5 +1,6 @@
-use std::io::{BufRead, BufReader};
-use std::path::PathBuf;
+use std::fs;
+use std::io::{self, BufRead, BufReader};
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc;
 use std::thread;
@@ -15,16 +16,81 @@ const DATA_PLANE_PREFIX: &str = "Data plane server listening on: ";
 const CONTROL_PANEL_PREFIX: &str = "Control panel server listening on: ";
 
 /// Prefer explicit `TINYMIST_PATH`, then the binary shipped in `resources/bin/`, then `PATH`.
-fn tinymist_executable(state: &AppState) -> PathBuf {
+///
+/// The bundled path lives under `target/` during `tauri dev`. If we executed it in place, Linux
+/// would keep the binary mapped (`ETXTBSY`) and `cargo build` could not overwrite it on rebuild.
+/// We copy into the app config dir and run that path instead.
+fn tinymist_executable(state: &AppState) -> Result<PathBuf, String> {
     if let Ok(p) = std::env::var("TINYMIST_PATH") {
-        return PathBuf::from(p);
+        return Ok(PathBuf::from(p));
     }
     if let Some(p) = state.bundled_tinymist.as_ref() {
         if p.is_file() {
-            return p.clone();
+            let cache_dir = state.app_config_dir.join("tinymist-cache");
+            return materialized_bundled_tinymist(p, &cache_dir).map_err(|e| e.to_string());
         }
     }
-    PathBuf::from("tinymist")
+    Ok(PathBuf::from("tinymist"))
+}
+
+fn bundled_cache_name() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "tinymist.exe"
+    } else {
+        "tinymist"
+    }
+}
+
+fn needs_tinymist_cache_refresh(bundled: &Path, cached: &Path) -> io::Result<bool> {
+    let b = fs::metadata(bundled)?;
+    let c = match fs::metadata(cached) {
+        Ok(m) => m,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(true),
+        Err(e) => return Err(e),
+    };
+    if b.len() != c.len() {
+        return Ok(true);
+    }
+    match (b.modified(), c.modified()) {
+        (Ok(bt), Ok(ct)) => Ok(bt > ct),
+        _ => Ok(true),
+    }
+}
+
+fn replace_file_atomically(tmp: &Path, dest: &Path) -> io::Result<()> {
+    #[cfg(unix)]
+    {
+        fs::rename(tmp, dest)?;
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = fs::remove_file(dest);
+        fs::rename(tmp, dest)?;
+    }
+    Ok(())
+}
+
+fn materialized_bundled_tinymist(bundled: &Path, cache_dir: &Path) -> io::Result<PathBuf> {
+    fs::create_dir_all(cache_dir)?;
+    let dest = cache_dir.join(bundled_cache_name());
+    if needs_tinymist_cache_refresh(bundled, &dest)? {
+        let tmp = cache_dir.join(if cfg!(target_os = "windows") {
+            ".tinymist.exe.part"
+        } else {
+            ".tinymist.part"
+        });
+        let _ = fs::remove_file(&tmp);
+        fs::copy(bundled, &tmp)?;
+        replace_file_atomically(&tmp, &dest)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = fs::metadata(&dest)?.permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&dest, perms)?;
+        }
+    }
+    Ok(dest)
 }
 
 fn parse_data_plane_url(line: &str) -> Option<String> {
@@ -209,7 +275,7 @@ pub fn ensure_running(app: &tauri::AppHandle, state: &AppState) -> Result<String
         .to_str()
         .ok_or("package cache path is not valid UTF-8")?;
 
-    let mut cmd = Command::new(tinymist_executable(state));
+    let mut cmd = Command::new(tinymist_executable(state)?);
     cmd.current_dir(&root)
         .arg("preview")
         .arg(input_s)
