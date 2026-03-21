@@ -74,39 +74,31 @@ export type PreviewSource = {
 };
 
 export async function compileProject(
-  entry?: string | null,
   previewSource?: PreviewSource | null,
 ): Promise<CompileOutcome> {
   return invoke("compile_project", {
-    entry: entry ?? null,
     previewSource: previewSource ?? null,
   });
 }
 
-export async function startTinymistPreview(entry?: string | null): Promise<string> {
-  return invoke("start_tinymist_preview", {
-    entry: entry ?? null,
-  });
+export async function startTinymistPreview(): Promise<string> {
+  return invoke("start_tinymist_preview");
 }
 
-export async function restartTinymistPreview(entry?: string | null): Promise<string> {
-  return invoke("restart_tinymist_preview", {
-    entry: entry ?? null,
-  });
+export async function restartTinymistPreview(): Promise<string> {
+  return invoke("restart_tinymist_preview");
 }
 
 /** Compile project at `projectPath` without switching the open project (e.g. hub previews). */
 export async function compileProjectAtPath(
   projectPath: string,
-  entry?: string | null,
 ): Promise<CompileOutcome> {
   return invoke("compile_project_at_path", {
     projectPath,
-    entry: entry ?? null,
   });
 }
 
-export async function exportPdf(entry?: string | null): Promise<void> {
+export async function exportPdf(): Promise<void> {
   const path = await save({
     title: "Export PDF",
     defaultPath: "export.pdf",
@@ -115,7 +107,6 @@ export async function exportPdf(entry?: string | null): Promise<void> {
   if (path === null) return;
   return invoke("export_pdf_to_path", {
     path,
-    entry: entry ?? null,
   });
 }
 

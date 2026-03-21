@@ -1,5 +1,4 @@
 use std::io::{BufRead, BufReader};
-use std::fs;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc;
@@ -9,36 +8,11 @@ use std::time::Duration;
 use tauri::Emitter;
 use tungstenite::Message;
 
-use crate::project::paths::join_under_root;
+use crate::project::paths::{join_under_root, MAIN_TYP};
 use crate::AppState;
-
-#[derive(serde::Deserialize)]
-struct PaperDeskMeta {
-    entry: Option<String>,
-}
 
 const DATA_PLANE_PREFIX: &str = "Data plane server listening on: ";
 const CONTROL_PANEL_PREFIX: &str = "Control panel server listening on: ";
-
-fn resolve_entry(root: &std::path::Path, entry: Option<String>) -> String {
-    if let Some(entry) = entry {
-        let trimmed = entry.trim();
-        if !trimmed.is_empty() {
-            return trimmed.replace('\\', "/");
-        }
-    }
-
-    let meta_path = root.join("paperdesk.json");
-    if let Ok(raw) = fs::read_to_string(&meta_path) {
-        if let Ok(meta) = serde_json::from_str::<PaperDeskMeta>(&raw) {
-            if let Some(entry) = meta.entry.filter(|value| !value.is_empty()) {
-                return entry.replace('\\', "/");
-            }
-        }
-    }
-
-    "main.typ".into()
-}
 
 /// Prefer explicit `TINYMIST_PATH`, then the binary shipped in `resources/bin/`, then `PATH`.
 fn tinymist_executable(state: &AppState) -> PathBuf {
@@ -202,11 +176,7 @@ pub struct TinymistSession {
 }
 
 /// Start tinymist preview for the open project, or return the existing session URL if unchanged.
-pub fn ensure_running(
-    app: &tauri::AppHandle,
-    state: &AppState,
-    entry: Option<String>,
-) -> Result<String, String> {
+pub fn ensure_running(app: &tauri::AppHandle, state: &AppState) -> Result<String, String> {
     let root = state
         .project_root
         .lock()
@@ -214,16 +184,15 @@ pub fn ensure_running(
         .clone()
         .ok_or_else(|| "no project open".to_string())?;
 
-    let rel = resolve_entry(&root, entry);
-    let input_path = join_under_root(&root, &rel)?;
+    let input_path = join_under_root(&root, MAIN_TYP)?;
     if !input_path.is_file() {
-        return Err(format!("entry file not found: {rel}"));
+        return Err(format!("entry file not found: {MAIN_TYP}"));
     }
 
     {
         let slot = state.tinymist.lock().map_err(|e| e.to_string())?;
         if let Some(session) = slot.as_ref() {
-            if session.root == root && session.entry_rel == rel {
+            if session.root == root && session.entry_rel == MAIN_TYP {
                 return Ok(session.preview_url.clone());
             }
         }
@@ -293,7 +262,7 @@ pub fn ensure_running(
         child,
         preview_url: preview_url.clone(),
         root,
-        entry_rel: rel,
+        entry_rel: MAIN_TYP.into(),
         control_plane_listener,
     });
 
@@ -304,17 +273,15 @@ pub fn ensure_running(
 pub fn start_tinymist_preview(
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
-    entry: Option<String>,
 ) -> Result<String, String> {
-    ensure_running(&app, &state, entry)
+    ensure_running(&app, &state)
 }
 
 #[tauri::command]
 pub fn restart_tinymist_preview(
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
-    entry: Option<String>,
 ) -> Result<String, String> {
     stop(&state)?;
-    ensure_running(&app, &state, entry)
+    ensure_running(&app, &state)
 }

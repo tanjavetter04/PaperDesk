@@ -224,8 +224,8 @@
     }
     try {
       const url = restart
-        ? await restartTinymistPreview(null)
-        : await startTinymistPreview(null);
+        ? await restartTinymistPreview()
+        : await startTinymistPreview();
       if (previewUrl !== url) {
         previewUrl = url;
       }
@@ -245,10 +245,6 @@
   async function persistFile(path: string, text: string) {
     saveLabel = "saving";
     await writeTextFile(path, text);
-    if (path === "paperdesk.json") {
-      await ensurePreview(true);
-      await refreshFiles();
-    }
     saveLabel = "saved";
   }
 
@@ -347,7 +343,7 @@
 
   async function doExport() {
     try {
-      await exportPdf(null);
+      await exportPdf();
     } catch {
       /* dialog plugin surfaces errors */
     }
@@ -355,7 +351,7 @@
 
   async function compileNow() {
     try {
-      const r = await compileProject(null, previewSourceForCompile());
+      const r = await compileProject(previewSourceForCompile());
       diagnostics = r.diagnostics;
       await refreshFiles();
     } catch (e) {
