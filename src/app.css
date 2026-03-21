@@ -12,6 +12,8 @@
   --pd-font: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
   --pd-mono: "IBM Plex Mono", "Consolas", monospace;
   --pd-editor-font-size: 14px;
+  /* Editor outer strip (matches CodeMirror one-dark background in dark theme). */
+  --pd-editor-chrome: #282c34;
 }
 
 :root[data-theme="light"] {
@@ -24,6 +26,7 @@
   --pd-accent: #1c7ed6;
   --pd-error: #e03131;
   --pd-warning: #f08c00;
+  --pd-editor-chrome: #f6f8fa;
 }
 
 *,

@@ -545,7 +545,7 @@
     color: var(--pd-text);
     font-size: 1rem;
     font-family: var(--pd-font), system-ui, sans-serif;
-    color-scheme: dark;
+    color-scheme: light dark;
     accent-color: var(--pd-accent);
     appearance: none;
     -webkit-appearance: none;
@@ -553,6 +553,15 @@
     background-repeat: no-repeat;
     background-position: right 0.45rem center;
     cursor: pointer;
+  }
+
+  :global(:root[data-theme="light"]) .select {
+    color-scheme: light;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none'%3E%3Cpath d='M3 4.5L6 7.5L9 4.5' stroke='%236c757d' stroke-width='1.25' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  }
+
+  :global(:root[data-theme="dark"]) .select {
+    color-scheme: dark;
   }
 
   .select:focus {

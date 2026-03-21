@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy } from "svelte";
-  import { EditorSelection, EditorState, Prec } from "@codemirror/state";
+  import { Compartment, EditorSelection, EditorState, Prec } from "@codemirror/state";
   import type { Text } from "@codemirror/state";
   import {
     EditorView,
@@ -18,6 +18,8 @@
   import { lintGutter, lintKeymap, setDiagnostics } from "@codemirror/lint";
   import { search, searchKeymap } from "@codemirror/search";
   import { oneDark } from "@codemirror/theme-one-dark";
+  import { appSettings } from "$lib/appSettings.svelte";
+  import { paperDeskLightCm } from "$lib/editor/cmTheme";
 
   /** Stable object; parent may replace `save` / `compile` so CodeMirror always calls the latest logic. */
   type HostCommands = {
@@ -58,6 +60,12 @@
 
   let host = $state<HTMLDivElement | null>(null);
   let view = $state<EditorView | null>(null);
+
+  const themeCompartment = new Compartment();
+
+  function cmThemeBundle() {
+    return appSettings.theme === "light" ? paperDeskLightCm : oneDark;
+  }
 
   function utf8OffsetBefore(doc: Text, utf16Head: number): number {
     return new TextEncoder().encode(doc.sliceString(0, utf16Head)).length;
@@ -107,7 +115,7 @@
         indentWithTab,
         ...lintKeymap,
       ]),
-      oneDark,
+      themeCompartment.of(cmThemeBundle()),
       EditorView.lineWrapping,
       EditorView.updateListener.of((u) => {
         if (u.docChanged) {
@@ -190,6 +198,15 @@
 
   $effect(() => {
     const v = view;
+    if (!v) return;
+    void appSettings.theme;
+    v.dispatch({
+      effects: themeCompartment.reconfigure(cmThemeBundle()),
+    });
+  });
+
+  $effect(() => {
+    const v = view;
     const p = path;
     const ps = previewScroll;
     if (!v || !ps || ps.tick === 0 || !p?.endsWith(".typ")) return;
@@ -225,7 +242,7 @@
     flex-direction: column;
     min-width: 0;
     min-height: 0;
-    background: #282c34;
+    background: var(--pd-editor-chrome);
   }
 
   .head {
@@ -281,8 +298,8 @@
     line-height: 1.4;
     padding: 6px 10px;
     min-height: 2.1rem;
-    background: #1e2127;
-    color: #abb2bf;
+    background: var(--pd-bg);
+    color: var(--pd-text);
     border: 1px solid var(--pd-border);
     border-radius: 5px;
   }
@@ -292,7 +309,7 @@
     font-size: 1rem;
     padding: 6px 12px;
     min-height: 2rem;
-    background: #3a3f4b;
+    background: color-mix(in srgb, var(--pd-accent) 14%, var(--pd-bg));
     color: var(--pd-text);
     border: 1px solid var(--pd-border);
     border-radius: 5px;
