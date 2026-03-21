@@ -23,6 +23,9 @@
   let compileLabel = $state<"idle" | "running" | "ok" | "err">("idle");
   let diagnostics = $state<CompileDiagnostic[]>([]);
   let pdfUrl = $state<string | null>(null);
+  let previewPage = $state(1);
+  /** UTF-8 byte offset of the cursor in the open buffer (for Typst forward sync). */
+  let cursorUtf8Offset = $state(0);
 
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
   let compileTimer: ReturnType<typeof setTimeout> | null = null;
@@ -91,7 +94,11 @@
 
   function previewSourceForCompile(): PreviewSource | null {
     if (!selectedPath || editorBufferPath !== selectedPath) return null;
-    return { path: selectedPath, text: buffer };
+    return {
+      path: selectedPath,
+      text: buffer,
+      cursor_byte_offset: cursorUtf8Offset,
+    };
   }
 
   function scheduleCompile() {
@@ -111,6 +118,9 @@
           pdfUrl = URL.createObjectURL(
             new Blob([bytes], { type: "application/pdf" }),
           );
+          if (r.preview_page != null) {
+            previewPage = r.preview_page;
+          }
           compileLabel = "ok";
         } else {
           compileLabel = "err";
@@ -152,6 +162,7 @@
     }
     selectedPath = p;
     editorBufferPath = null;
+    previewPage = 1;
     scheduleCompile();
   }
 
@@ -194,6 +205,9 @@
         pdfUrl = URL.createObjectURL(
           new Blob([bytes], { type: "application/pdf" }),
         );
+        if (r.preview_page != null) {
+          previewPage = r.preview_page;
+        }
         compileLabel = "ok";
       } else {
         compileLabel = "err";
@@ -236,6 +250,9 @@
       <EditorPane
         path={selectedPath}
         onDocumentChange={onEditorChange}
+        onCursorActivity={(off) => {
+          cursorUtf8Offset = off;
+        }}
         onReady={(t, loadedPath) => {
           buffer = t;
           editorBufferPath = loadedPath;
@@ -245,7 +262,7 @@
       <DiagnosticsPanel {diagnostics} />
     </section>
     <aside class="preview-col">
-      <PreviewPane pdfUrl={pdfUrl} />
+      <PreviewPane pdfUrl={pdfUrl} page={previewPage} />
     </aside>
   </div>
 </div>

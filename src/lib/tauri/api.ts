@@ -13,6 +13,7 @@ export type CompileOutcome = {
   ok: boolean;
   pdf_base64: string | null;
   diagnostics: CompileDiagnostic[];
+  preview_page: number | null;
 };
 
 export async function getRecentProjects(): Promise<string[]> {
@@ -59,7 +60,11 @@ export async function writeTextFile(
   return invoke("write_text_file", { relativePath, content });
 }
 
-export type PreviewSource = { path: string; text: string };
+export type PreviewSource = {
+  path: string;
+  text: string;
+  cursor_byte_offset?: number;
+};
 
 export async function compileProject(
   entry?: string | null,

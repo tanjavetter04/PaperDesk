@@ -105,6 +105,12 @@ impl PaperDeskWorld {
         &self.root
     }
 
+    /// Project-relative path (`/` separators) to Typst `FileId` (same rules as main entry).
+    pub fn file_id_for_relative_path(&self, relative: &str) -> Result<FileId, WorldCreationError> {
+        let rel = relative.replace('\\', "/");
+        resolve_source_file_id(&self.root, rel.trim())
+    }
+
     #[allow(dead_code)]
     pub fn workdir(&self) -> &Path {
         self.workdir.as_deref().unwrap_or(Path::new("."))

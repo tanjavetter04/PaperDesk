@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onDestroy } from "svelte";
   import { EditorState } from "@codemirror/state";
+  import type { Text } from "@codemirror/state";
   import {
     EditorView,
     keymap,
@@ -21,17 +22,27 @@
     path,
     onDocumentChange,
     onReady,
+    onCursorActivity,
   }: {
     path: string | null;
     onDocumentChange: (text: string) => void;
     /** Fires after `path` was read from disk and the editor instance is created. */
     onReady?: (text: string, loadedPath: string) => void;
+    /** UTF-8 byte offset of the primary cursor (for PDF forward sync). */
+    onCursorActivity?: (utf8ByteOffset: number) => void;
   } = $props();
 
   let host = $state<HTMLDivElement | null>(null);
   let view = $state<EditorView | null>(null);
 
-  function extensions(onChange: (s: string) => void) {
+  function utf8OffsetBefore(doc: Text, utf16Head: number): number {
+    return new TextEncoder().encode(doc.sliceString(0, utf16Head)).length;
+  }
+
+  function extensions(
+    onChange: (s: string) => void,
+    onCursor?: (utf8: number) => void,
+  ) {
     return [
       lineNumbers(),
       highlightActiveLineGutter(),
@@ -48,6 +59,10 @@
       EditorView.updateListener.of((u) => {
         if (u.docChanged) {
           onChange(u.state.doc.toString());
+        }
+        if (onCursor && (u.selectionSet || u.docChanged)) {
+          const head = u.state.selection.main.head;
+          onCursor(utf8OffsetBefore(u.state.doc, head));
         }
       }),
     ];
@@ -71,12 +86,15 @@
       const text = await readTextFile(p);
       if (cancelled) return;
       view?.destroy();
-      onReady?.(text, p);
       const state = EditorState.create({
         doc: text,
-        extensions: extensions((s) => onDocumentChange(s)),
+        extensions: extensions((s) => onDocumentChange(s), onCursorActivity),
       });
       view = new EditorView({ state, parent: el });
+      if (onCursorActivity) {
+        onCursorActivity(utf8OffsetBefore(view.state.doc, view.state.selection.main.head));
+      }
+      onReady?.(text, p);
     })();
 
     return () => {

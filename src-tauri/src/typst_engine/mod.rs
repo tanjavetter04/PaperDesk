@@ -9,6 +9,7 @@ use typst::diag::{Severity, SourceDiagnostic, Warned};
 use typst::foundations::Datetime;
 use typst::layout::PagedDocument;
 use typst_pdf::{PdfOptions, PdfStandards, Timestamp};
+use typst_ide::jump_from_cursor;
 
 /// Serializable compile diagnostic for the UI.
 #[derive(serde::Serialize, Clone, Debug)]
@@ -25,6 +26,8 @@ pub struct CompileOutcome {
     pub ok: bool,
     pub pdf_base64: Option<String>,
     pub diagnostics: Vec<CompileDiagnostic>,
+    /// 1-based PDF page for the preview cursor, when resolved.
+    pub preview_page: Option<u32>,
 }
 
 fn diagnostic_to_dto(world: &PaperDeskWorld, diag: &SourceDiagnostic) -> CompileDiagnostic {
@@ -74,10 +77,33 @@ fn pdf_timestamp() -> Option<Timestamp> {
     Timestamp::new_local(dt, local.offset().local_minus_utc() / 60)
 }
 
+fn preview_page_for_cursor(
+    world: &PaperDeskWorld,
+    document: &PagedDocument,
+    relative_path: &str,
+    byte_offset: usize,
+) -> Option<u32> {
+    let id = world.file_id_for_relative_path(relative_path).ok()?;
+    let source = world.source(id).ok()?;
+    let len = source.text().len();
+    let base = byte_offset.min(len);
+    // `jump_from_cursor` only hits Text/MathText leaves; nudge backward over markup/whitespace.
+    for delta in 0..=96_u32 {
+        let off = base.saturating_sub(delta as usize);
+        if let Some(p) = jump_from_cursor(document, &source, off).first() {
+            return Some(p.page.get() as u32);
+        }
+    }
+    None
+}
+
 /// Compile the project entry point to PDF. Resets world caches first.
+///
+/// `preview_jump`: project-relative path and UTF-8 cursor offset in that source (editor buffer).
 pub fn compile_to_pdf(
     world: &mut PaperDeskWorld,
-) -> Result<(Vec<u8>, Vec<CompileDiagnostic>), Vec<CompileDiagnostic>> {
+    preview_jump: Option<(&str, usize)>,
+) -> Result<(Vec<u8>, Vec<CompileDiagnostic>, Option<u32>), Vec<CompileDiagnostic>> {
     world.reset();
 
     let Warned { output, warnings } = typst::compile::<PagedDocument>(world);
@@ -97,6 +123,10 @@ pub fn compile_to_pdf(
         }
     };
 
+    let preview_page = preview_jump.and_then(|(path, off)| {
+        preview_page_for_cursor(world, &document, path, off)
+    });
+
     let options = PdfOptions {
         timestamp: pdf_timestamp(),
         standards: PdfStandards::default(),
@@ -104,7 +134,7 @@ pub fn compile_to_pdf(
     };
 
     match typst_pdf::pdf(&document, &options) {
-        Ok(pdf) => Ok((pdf, diagnostics)),
+        Ok(pdf) => Ok((pdf, diagnostics, preview_page)),
         Err(errs) => {
             for e in errs.iter() {
                 diagnostics.push(diagnostic_to_dto(world, e));

@@ -18,6 +18,8 @@ struct PaperDeskMeta {
 pub struct PreviewSource {
     pub path: String,
     pub text: String,
+    #[serde(default, alias = "cursorByteOffset")]
+    pub cursor_byte_offset: Option<u32>,
 }
 
 fn resolve_entry(root: &Path, entry: Option<String>) -> String {
@@ -51,9 +53,16 @@ pub fn compile_project(
         .clone()
         .ok_or_else(|| "no project open".to_string())?;
     let rel = resolve_entry(&root, entry);
+    let preview_cursor = preview_source.as_ref().and_then(|p| {
+        p.cursor_byte_offset
+            .map(|o| (p.path.clone(), o as usize))
+    });
     let overrides = preview_source
         .map(|p| vec![(p.path, p.text)])
         .unwrap_or_default();
+    let preview_jump = preview_cursor
+        .as_ref()
+        .map(|(path, off)| (path.as_str(), *off));
     let mut world = PaperDeskWorld::new(
         root,
         &rel,
@@ -62,18 +71,20 @@ pub fn compile_project(
     )
     .map_err(|e| e.to_string())?;
 
-    match typst_engine::compile_to_pdf(&mut world) {
-        Ok((pdf, diagnostics)) => Ok(CompileOutcome {
+    match typst_engine::compile_to_pdf(&mut world, preview_jump) {
+        Ok((pdf, diagnostics, preview_page)) => Ok(CompileOutcome {
             ok: true,
             pdf_base64: Some(
                 base64::engine::general_purpose::STANDARD.encode(pdf),
             ),
             diagnostics,
+            preview_page,
         }),
         Err(diagnostics) => Ok(CompileOutcome {
             ok: false,
             pdf_base64: None,
             diagnostics,
+            preview_page: None,
         }),
     }
 }
@@ -100,7 +111,7 @@ pub fn export_pdf_to_path(
     )
     .map_err(|e| e.to_string())?;
 
-    let (pdf, _) = typst_engine::compile_to_pdf(&mut world).map_err(|diags| {
+    let (pdf, _, _) = typst_engine::compile_to_pdf(&mut world, None).map_err(|diags| {
         diags
             .into_iter()
             .map(|d| d.message)

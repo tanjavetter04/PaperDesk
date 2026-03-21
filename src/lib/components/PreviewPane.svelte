@@ -1,14 +1,100 @@
 <script lang="ts">
-  let { pdfUrl }: { pdfUrl: string | null } = $props();
+  import * as pdfjs from "pdfjs-dist";
+  import pdfjsWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+
+  pdfjs.GlobalWorkerOptions.workerSrc = pdfjsWorker;
+
+  let {
+    pdfUrl,
+    page = 1,
+  }: {
+    pdfUrl: string | null;
+    /** 1-based page (pdf.js; native iframe `#page=` is unreliable in WebKitGTK). */
+    page?: number;
+  } = $props();
+
+  let canvas = $state<HTMLCanvasElement | null>(null);
+  let slot = $state<HTMLDivElement | null>(null);
+
+  const safePage = $derived(Math.max(1, Math.floor(page)));
+  let loadError = $state<string | null>(null);
+
+  $effect(() => {
+    const url = pdfUrl;
+    const pg = safePage;
+    const c = canvas;
+    const wrap = slot;
+    if (!url || !c || !wrap) {
+      loadError = null;
+      return;
+    }
+
+    let cancelled = false;
+    loadError = null;
+
+    const loadingTask = pdfjs.getDocument({ url });
+
+    const run = async () => {
+      try {
+        const pdf = await loadingTask.promise;
+        if (cancelled) {
+          await pdf.destroy().catch(() => {});
+          return;
+        }
+
+        const n = Math.min(pg, pdf.numPages);
+        const pdfPage = await pdf.getPage(n);
+        if (cancelled) {
+          await pdf.destroy().catch(() => {});
+          return;
+        }
+
+        const base = pdfPage.getViewport({ scale: 1 });
+        const cssW = Math.max(wrap.clientWidth, 1);
+        const cssScale = cssW / base.width;
+        const dpr = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
+        const viewport = pdfPage.getViewport({ scale: cssScale * dpr });
+
+        c.width = Math.floor(viewport.width);
+        c.height = Math.floor(viewport.height);
+        c.style.width = `${cssW}px`;
+        c.style.height = `${(base.height * cssScale).toFixed(2)}px`;
+
+        const ctx = c.getContext("2d");
+        if (!ctx) {
+          await pdf.destroy().catch(() => {});
+          return;
+        }
+
+        const renderTask = pdfPage.render({ canvasContext: ctx, viewport });
+        await renderTask.promise;
+        await pdf.destroy().catch(() => {});
+      } catch (e) {
+        if (!cancelled) {
+          loadError = e instanceof Error ? e.message : String(e);
+        }
+      } finally {
+        await loadingTask.destroy().catch(() => {});
+      }
+    };
+
+    void run();
+
+    return () => {
+      cancelled = true;
+      void loadingTask.destroy().catch(() => {});
+    };
+  });
 </script>
 
 <div class="preview">
   <div class="head">Preview</div>
-  <div class="frame-wrap">
+  <div class="frame-wrap" bind:this={slot}>
     {#if pdfUrl}
-      {#key pdfUrl}
-        <iframe class="frame" title="PDF preview" src={pdfUrl}></iframe>
-      {/key}
+      <canvas class="pdf-canvas" class:dim={!!loadError} bind:this={canvas}></canvas>
+      {#if loadError}
+        <p class="err-overlay">{loadError}</p>
+      {/if}
     {:else}
       <p class="placeholder">Compile to see PDF preview</p>
     {/if}
@@ -41,17 +127,35 @@
     flex: 1;
     min-height: 0;
     position: relative;
-    overflow: hidden;
+    overflow: auto;
+    background: #525659;
   }
 
-  /* Percentage heights on iframes are unreliable in nested flex/grid; fill the slot explicitly. */
-  .frame {
+  .pdf-canvas {
+    display: block;
+    margin: 0 auto;
+    max-width: 100%;
+    height: auto;
+  }
+
+  .pdf-canvas.dim {
+    opacity: 0.25;
+  }
+
+  .err-overlay {
     position: absolute;
-    inset: 0;
-    border: none;
-    width: 100%;
-    height: 100%;
-    background: #525659;
+    left: 50%;
+    top: 1rem;
+    transform: translateX(-50%);
+    max-width: 90%;
+    margin: 0;
+    padding: 0.65rem 0.85rem;
+    border-radius: 6px;
+    background: var(--pd-surface);
+    border: 1px solid var(--pd-error);
+    color: var(--pd-error);
+    font-size: 0.82rem;
+    z-index: 1;
   }
 
   .placeholder {
