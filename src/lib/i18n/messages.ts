@@ -180,7 +180,7 @@ const de: Table = {
   "project.compile": "Kompilieren",
   "project.exportPdf": "PDF exportieren",
   "status.saved": "gespeichert",
-  "status.dirty": "ungehalten",
+  "status.dirty": "ungespeichert",
   "status.saving": "speichern…",
   "preview.idle": "Vorschau",
   "preview.starting": "startet…",

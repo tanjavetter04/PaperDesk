@@ -21,6 +21,15 @@ type Inbound =
       text: string;
       unknownMessage: string;
       suggestionsLabel: string;
+    }
+  | {
+      type: "spellScanSlice";
+      id: number;
+      lang: SpellLang;
+      slice: string;
+      baseOffset: number;
+      unknownMessage: string;
+      suggestionsLabel: string;
     };
 
 function utf8FromArrayBuffer(buf: ArrayBuffer): string {
@@ -70,15 +79,24 @@ self.onmessage = (ev: MessageEvent<Inbound>) => {
     return;
   }
 
-  if (msg.type === "spellScan") {
+  if (msg.type === "spellScan" || msg.type === "spellScanSlice") {
     const payload = msg;
     jobChain = jobChain
       .then(() =>
         (async () => {
-          const { id, lang, text, unknownMessage, suggestionsLabel } = payload;
+          const { id, lang, unknownMessage, suggestionsLabel } = payload;
           try {
             const spell = await ensureSpell(lang);
-            const diags = runTypstSpellScanPlain(text, spell, unknownMessage, suggestionsLabel, lang);
+            const text = payload.type === "spellScanSlice" ? payload.slice : payload.text;
+            const base = payload.type === "spellScanSlice" ? payload.baseOffset : 0;
+            let diags = runTypstSpellScanPlain(text, spell, unknownMessage, suggestionsLabel, lang);
+            if (base !== 0) {
+              diags = diags.map((d) => ({
+                ...d,
+                from: d.from + base,
+                to: d.to + base,
+              }));
+            }
             self.postMessage({ type: "spellResult", id, diags });
           } catch (e) {
             const err = e instanceof Error ? e.message : String(e);

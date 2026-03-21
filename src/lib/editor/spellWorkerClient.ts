@@ -72,3 +72,27 @@ export function requestSpellScanInWorker(args: {
     });
   });
 }
+
+/** Spell-check only `slice`; returned diagnostics use absolute indices (`baseOffset` added). */
+export function requestSpellSliceScanInWorker(args: {
+  lang: SpellLang;
+  slice: string;
+  baseOffset: number;
+  unknownMessage: string;
+  suggestionsLabel: string;
+}): Promise<SpellDiagPlain[]> {
+  const id = ++seq;
+  const w = getWorker();
+  return new Promise((resolve, reject) => {
+    pending.set(id, { resolve, reject });
+    w.postMessage({
+      type: "spellScanSlice",
+      id,
+      lang: args.lang,
+      slice: args.slice,
+      baseOffset: args.baseOffset,
+      unknownMessage: args.unknownMessage,
+      suggestionsLabel: args.suggestionsLabel,
+    });
+  });
+}

@@ -21,8 +21,16 @@
   import { appSettings } from "$lib/appSettings.svelte";
   import { locale, t } from "$lib/i18n/locale.svelte";
   import { paperDeskLightCm } from "$lib/editor/cmTheme";
+  import type { Locale } from "$lib/i18n/messages";
+  import type { SpellDiagPlain } from "$lib/editor/spellcheckTypst";
+  import {
+    expandToWordContext,
+    mapSpellDiagThroughEdit,
+    mergeSpellAfterRescan,
+    trySingleEdit,
+  } from "$lib/editor/spellIncremental";
   import { spellPlainToCmDiagnostics } from "$lib/editor/spellcheckTypst";
-  import { requestSpellScanInWorker } from "$lib/editor/spellWorkerClient";
+  import { requestSpellScanInWorker, requestSpellSliceScanInWorker } from "$lib/editor/spellWorkerClient";
 
   /** Stable object; parent may replace `save` / `compile` so CodeMirror always calls the latest logic. */
   type HostCommands = {
@@ -76,6 +84,17 @@
   let docRevision = $state(0);
   /** Active spell-worker jobs (supports overlap while a stale run finishes). */
   let spellWorkerInflight = $state(0);
+
+  /** Enables incremental worker scans after a full pass for this tab. */
+  let spellEditCache: {
+    path: string;
+    reloadTick: number;
+    reloadFromDiskTick: number;
+    uiLocale: Locale;
+    text: string;
+    plain: SpellDiagPlain[];
+    spellLang: "de" | "en";
+  } | null = null;
 
   const themeCompartment = new Compartment();
 
@@ -196,7 +215,9 @@
     const diags = compileDiagnostics;
     const spellLang = appSettings.spellcheckLanguage;
     void docRevision;
-    void locale.value;
+    const uiLoc = locale.value;
+    const rk = reloadTick;
+    const rfd = reloadFromDiskTick;
 
     if (!v) return;
 
@@ -204,6 +225,7 @@
       p?.endsWith(".typ") ? compileDiagnosticsToCm(v.state.doc, p, diags) : [];
 
     if (spellLang === "off" || !p?.endsWith(".typ")) {
+      spellEditCache = null;
       v.dispatch(setDiagnostics(v.state, compileCm));
       return;
     }
@@ -214,26 +236,99 @@
     const docSnap = v.state.doc.toString();
     const spellUnknown = t("editor.spellUnknown");
     const spellSuggestions = t("editor.spellSuggestions");
+    const langActive = spellLang;
+    const pathActive = p;
     const handle = window.setTimeout(() => {
       void (async () => {
-        spellWorkerInflight += 1;
         try {
-          const plain = await requestSpellScanInWorker({
-            lang: spellLang,
-            text: docSnap,
-            unknownMessage: spellUnknown,
-            suggestionsLabel: spellSuggestions,
-          });
+          let plain: SpellDiagPlain[];
+
+          const cacheOk =
+            spellEditCache &&
+            spellEditCache.path === pathActive &&
+            spellEditCache.spellLang === langActive &&
+            spellEditCache.uiLocale === uiLoc &&
+            spellEditCache.reloadTick === rk &&
+            spellEditCache.reloadFromDiskTick === rfd;
+
+          if (cacheOk && spellEditCache!.text === docSnap) {
+            plain = spellEditCache!.plain;
+          } else if (cacheOk && spellEditCache!.text !== docSnap) {
+            const edit = trySingleEdit(spellEditCache!.text, docSnap);
+            if (edit) {
+              const mapped = spellEditCache!.plain
+                .map((d) => mapSpellDiagThroughEdit(d, edit))
+                .filter((x): x is SpellDiagPlain => x != null);
+              const exp = expandToWordContext(docSnap, edit.newMidStart, edit.newMidEnd);
+              spellWorkerInflight += 1;
+              try {
+                const slice = docSnap.slice(exp.from, exp.to);
+                const fresh =
+                  slice.length > 0
+                    ? await requestSpellSliceScanInWorker({
+                        lang: langActive,
+                        slice,
+                        baseOffset: exp.from,
+                        unknownMessage: spellUnknown,
+                        suggestionsLabel: spellSuggestions,
+                      })
+                    : [];
+                plain = mergeSpellAfterRescan(mapped, fresh, exp.from, exp.to);
+              } catch (e) {
+                console.warn("PaperDesk spellcheck (incremental):", e);
+                plain = await requestSpellScanInWorker({
+                  lang: langActive,
+                  text: docSnap,
+                  unknownMessage: spellUnknown,
+                  suggestionsLabel: spellSuggestions,
+                });
+              } finally {
+                spellWorkerInflight -= 1;
+              }
+            } else {
+              spellWorkerInflight += 1;
+              try {
+                plain = await requestSpellScanInWorker({
+                  lang: langActive,
+                  text: docSnap,
+                  unknownMessage: spellUnknown,
+                  suggestionsLabel: spellSuggestions,
+                });
+              } finally {
+                spellWorkerInflight -= 1;
+              }
+            }
+          } else {
+            spellWorkerInflight += 1;
+            try {
+              plain = await requestSpellScanInWorker({
+                lang: langActive,
+                text: docSnap,
+                unknownMessage: spellUnknown,
+                suggestionsLabel: spellSuggestions,
+              });
+            } finally {
+              spellWorkerInflight -= 1;
+            }
+          }
+
           if (cancelled || v.state.doc.toString() !== docSnap) return;
           const spellDiags = spellPlainToCmDiagnostics(plain);
           if (cancelled) return;
           const compileCm2 =
             p?.endsWith(".typ") ? compileDiagnosticsToCm(v.state.doc, p, diags) : [];
           v.dispatch(setDiagnostics(v.state, [...compileCm2, ...spellDiags]));
+          spellEditCache = {
+            path: pathActive,
+            reloadTick: rk,
+            reloadFromDiskTick: rfd,
+            uiLocale: uiLoc,
+            text: docSnap,
+            plain,
+            spellLang: langActive,
+          };
         } catch (e) {
           console.warn("PaperDesk spellcheck:", e);
-        } finally {
-          spellWorkerInflight -= 1;
         }
       })();
     }, 480);
