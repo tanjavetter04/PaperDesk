@@ -213,7 +213,8 @@ fn shutdown_open_project(state: &AppState) -> Result<(), String> {
         let _ = crate::project::history::try_checkpoint(&state, r, "close", false);
     }
     bib_watch::stop(&state);
-    tinymist_preview::stop(&state)?;
+    // Best-effort: preview teardown must not block returning to the project hub.
+    let _ = tinymist_preview::stop(&state);
     *state.project_root.lock().map_err(|e| e.to_string())? = None;
     Ok(())
 }
