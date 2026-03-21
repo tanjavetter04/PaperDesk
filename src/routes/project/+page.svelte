@@ -40,6 +40,7 @@
     ProjectEntry,
   } from "$lib/tauri/api";
   import { appSettings } from "$lib/appSettings.svelte";
+  import { scheduleWarmAlternateSpellDicts } from "$lib/editor/spellDictionaries";
   import { t } from "$lib/i18n/locale.svelte";
   import { openSettingsModal } from "$lib/settingsModal.svelte";
 
@@ -308,6 +309,10 @@
     }
     reloadFromDiskTick += 1;
   }
+
+  $effect(() => {
+    scheduleWarmAlternateSpellDicts(appSettings.spellcheckLanguage);
+  });
 
   onMount(() => {
     let unlistenPreview: (() => void) | undefined;

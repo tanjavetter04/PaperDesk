@@ -26,6 +26,7 @@ export const messageKeys = [
   "settings.spellcheckHint",
   "editor.spellUnknown",
   "editor.spellSuggestions",
+  "editor.spellChecking",
   "project.bibExternalChange",
   "project.bibReloadFromDisk",
   "hub.openProjectFolder",
@@ -139,6 +140,7 @@ const de: Table = {
     "Lokale Hunspell-Wörterbücher (Deutsch / Englisch). Gilt für .typ-Dateien; Typst-Markup wird nur grob ausgeblendet.",
   "editor.spellUnknown": "Unbekanntes Wort",
   "editor.spellSuggestions": "Vorschläge",
+  "editor.spellChecking": "Rechtschreibung wird geprüft …",
   "project.bibExternalChange":
     "Die Bibliographie-Datei wurde außerhalb von PaperDesk geändert (z. B. durch Zotero). Deine ungespeicherten Änderungen in diesem Tab gehen verloren, wenn du neu lädst.",
   "project.bibReloadFromDisk": "Neu laden",
@@ -256,6 +258,7 @@ const en: Table = {
     "Local Hunspell dictionaries (German / English). Applies to .typ files; Typst markup is only heuristically filtered.",
   "editor.spellUnknown": "Unknown word",
   "editor.spellSuggestions": "Suggestions",
+  "editor.spellChecking": "Checking spelling…",
   "project.bibExternalChange":
     "The bibliography file was changed outside PaperDesk (e.g. by Zotero). Reloading will discard your unsaved edits in this tab.",
   "project.bibReloadFromDisk": "Reload from disk",

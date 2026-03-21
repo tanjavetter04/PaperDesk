@@ -21,8 +21,8 @@
   import { appSettings } from "$lib/appSettings.svelte";
   import { locale, t } from "$lib/i18n/locale.svelte";
   import { paperDeskLightCm } from "$lib/editor/cmTheme";
-  import { getSpellchecker } from "$lib/editor/spellDictionaries";
-  import { typstSpellDiagnostics } from "$lib/editor/spellcheckTypst";
+  import { spellPlainToCmDiagnostics } from "$lib/editor/spellcheckTypst";
+  import { requestSpellScanInWorker } from "$lib/editor/spellWorkerClient";
 
   /** Stable object; parent may replace `save` / `compile` so CodeMirror always calls the latest logic. */
   type HostCommands = {
@@ -74,6 +74,8 @@
   let view = $state<EditorView | null>(null);
   /** Bumps when the open document text changes (spellcheck debounce). */
   let docRevision = $state(0);
+  /** Active spell-worker jobs (supports overlap while a stale run finishes). */
+  let spellWorkerInflight = $state(0);
 
   const themeCompartment = new Compartment();
 
@@ -214,22 +216,24 @@
     const spellSuggestions = t("editor.spellSuggestions");
     const handle = window.setTimeout(() => {
       void (async () => {
+        spellWorkerInflight += 1;
         try {
-          const spell = await getSpellchecker(spellLang);
+          const plain = await requestSpellScanInWorker({
+            lang: spellLang,
+            text: docSnap,
+            unknownMessage: spellUnknown,
+            suggestionsLabel: spellSuggestions,
+          });
           if (cancelled || v.state.doc.toString() !== docSnap) return;
-          const spellDiags = typstSpellDiagnostics(
-            v.state.doc,
-            spell,
-            spellUnknown,
-            spellSuggestions,
-            spellLang,
-          );
+          const spellDiags = spellPlainToCmDiagnostics(plain);
           if (cancelled) return;
           const compileCm2 =
             p?.endsWith(".typ") ? compileDiagnosticsToCm(v.state.doc, p, diags) : [];
           v.dispatch(setDiagnostics(v.state, [...compileCm2, ...spellDiags]));
         } catch (e) {
           console.warn("PaperDesk spellcheck:", e);
+        } finally {
+          spellWorkerInflight -= 1;
         }
       })();
     }, 480);
@@ -293,6 +297,9 @@
     {:else}
       <span class="muted">{t("editor.selectFile")}</span>
     {/if}
+    {#if spellWorkerInflight > 0 && path?.endsWith(".typ") && appSettings.spellcheckLanguage !== "off"}
+      <span class="spell-status" role="status" aria-live="polite">{t("editor.spellChecking")}</span>
+    {/if}
   </div>
   <div class="cm-host" bind:this={host}></div>
 </div>
@@ -307,6 +314,11 @@
   }
 
   .head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    min-width: 0;
     padding: 0.55rem 0.8rem;
     font-size: 1rem;
     border-bottom: 1px solid var(--pd-border);
@@ -316,6 +328,36 @@
   .path {
     font-family: var(--pd-mono);
     color: var(--pd-text);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .spell-status {
+    flex-shrink: 0;
+    font-family: var(--pd-font, var(--pd-sans, system-ui, sans-serif));
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--pd-muted);
+    animation: spell-pulse 1.1s ease-in-out infinite;
+  }
+
+  @keyframes spell-pulse {
+    0%,
+    100% {
+      opacity: 0.72;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .spell-status {
+      animation: none;
+      opacity: 0.9;
+    }
   }
 
   .muted {
