@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy } from "svelte";
-  import { EditorSelection, EditorState } from "@codemirror/state";
+  import { EditorSelection, EditorState, Prec } from "@codemirror/state";
   import type { Text } from "@codemirror/state";
   import {
     EditorView,
@@ -16,7 +16,14 @@
   import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
   import { markdown } from "@codemirror/lang-markdown";
   import { lintGutter, lintKeymap, setDiagnostics } from "@codemirror/lint";
+  import { search, searchKeymap } from "@codemirror/search";
   import { oneDark } from "@codemirror/theme-one-dark";
+
+  /** Stable object; parent may replace `save` / `compile` so CodeMirror always calls the latest logic. */
+  type HostCommands = {
+    save?: () => void | Promise<void>;
+    compile?: () => void | Promise<void>;
+  };
   import { readTextFile } from "$lib/tauri/api";
   import type { CompileDiagnostic } from "$lib/tauri/api";
   import {
@@ -33,8 +40,10 @@
     compileDiagnostics = [],
     focusDiagnosticRequest,
     previewScroll,
+    hostCommands,
   }: {
     path: string | null;
+    hostCommands?: HostCommands;
     onDocumentChange: (text: string) => void;
     /** Fires after `path` was read from disk and the editor instance is created. */
     onReady?: (text: string, loadedPath: string) => void;
@@ -55,7 +64,8 @@
 
   function extensions(
     onChange: (s: string) => void,
-    onCursor?: (utf8: number) => void,
+    onCursor: ((utf8: number) => void) | undefined,
+    cmds: HostCommands | undefined,
   ) {
     return [
       lineNumbers(),
@@ -67,8 +77,35 @@
       crosshairCursor(),
       history(),
       markdown(),
+      search(),
       lintGutter(),
-      keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab, ...lintKeymap]),
+      Prec.high(
+        keymap.of([
+          {
+            key: "Mod-s",
+            preventDefault: true,
+            run: () => {
+              void cmds?.save?.();
+              return true;
+            },
+          },
+          {
+            key: "Mod-Shift-b",
+            preventDefault: true,
+            run: () => {
+              void cmds?.compile?.();
+              return true;
+            },
+          },
+        ]),
+      ),
+      keymap.of([
+        ...searchKeymap,
+        ...defaultKeymap,
+        ...historyKeymap,
+        indentWithTab,
+        ...lintKeymap,
+      ]),
       oneDark,
       EditorView.lineWrapping,
       EditorView.updateListener.of((u) => {
@@ -103,7 +140,11 @@
       view?.destroy();
       const state = EditorState.create({
         doc: text,
-        extensions: extensions((s) => onDocumentChange(s), onCursorActivity),
+        extensions: extensions(
+          (s) => onDocumentChange(s),
+          onCursorActivity,
+          hostCommands,
+        ),
       });
       view = new EditorView({ state, parent: el });
       if (onCursorActivity) {
@@ -187,8 +228,8 @@
   }
 
   .head {
-    padding: 0.5rem 0.75rem;
-    font-size: 0.8rem;
+    padding: 0.55rem 0.8rem;
+    font-size: 0.85rem;
     border-bottom: 1px solid var(--pd-border);
     background: var(--pd-surface);
   }
@@ -214,7 +255,45 @@
 
   .cm-host :global(.cm-scroller) {
     font-family: var(--pd-mono);
+    font-size: 14px;
+    line-height: 1.48;
+  }
+
+  .cm-host :global(.cm-panel.cm-search) {
+    color: var(--pd-text);
+    background: var(--pd-surface);
+    border-bottom: 1px solid var(--pd-border);
+    font-family: var(--pd-font, var(--pd-sans, system-ui, sans-serif));
     font-size: 13px;
-    line-height: 1.45;
+    padding: 8px 10px;
+    gap: 8px 10px;
+  }
+
+  .cm-host :global(.cm-panel.cm-search label) {
+    color: var(--pd-muted);
+    font-size: 12px;
+  }
+
+  .cm-host :global(.cm-panel.cm-search .cm-textfield) {
+    font-family: var(--pd-mono);
+    font-size: 13px;
+    line-height: 1.4;
+    padding: 6px 10px;
+    min-height: 2.1rem;
+    background: #1e2127;
+    color: #abb2bf;
+    border: 1px solid var(--pd-border);
+    border-radius: 5px;
+  }
+
+  .cm-host :global(.cm-panel.cm-search .cm-button) {
+    font-family: var(--pd-font, inherit);
+    font-size: 12px;
+    padding: 6px 12px;
+    min-height: 2rem;
+    background: #3a3f4b;
+    color: var(--pd-text);
+    border: 1px solid var(--pd-border);
+    border-radius: 5px;
   }
 </style>

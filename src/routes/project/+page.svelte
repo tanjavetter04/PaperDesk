@@ -52,6 +52,14 @@
 
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
   let diagnosticsTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const editorHostCommands: {
+    save: () => void | Promise<void>;
+    compile: () => void | Promise<void>;
+  } = {
+    save() {},
+    compile() {},
+  };
   /** `buffer` is only a safe preview overlay when it matches the open tab (see EditorPane onReady). */
   let editorBufferPath = $state<string | null>(null);
   const LIVE_SAVE_DEBOUNCE_MS = 140;
@@ -192,9 +200,28 @@
     void tick().then(() => {
       previewWidthPx = clampPreviewWidth(previewWidthPx);
     });
+
+    editorHostCommands.save = async () => {
+      if (!selectedPath) return;
+      if (saveTimer) {
+        clearTimeout(saveTimer);
+        saveTimer = null;
+      }
+      try {
+        await persistFile(selectedPath, buffer);
+      } catch {
+        saveLabel = "dirty";
+      }
+    };
+    editorHostCommands.compile = () => {
+      void compileNow();
+    };
+
     return () => {
       window.removeEventListener("resize", onResize);
       unlistenPreview?.();
+      editorHostCommands.save = () => {};
+      editorHostCommands.compile = () => {};
     };
   });
 
@@ -558,6 +585,7 @@
     <section class="center">
       <EditorPane
         path={selectedPath}
+        hostCommands={editorHostCommands}
         onDocumentChange={onEditorChange}
         onReady={onEditorReady}
         compileDiagnostics={diagnostics}
