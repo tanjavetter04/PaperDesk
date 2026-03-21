@@ -1,13 +1,19 @@
-import * as pdfjs from "pdfjs-dist";
-import pdfjsWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+type PdfJsModule = typeof import("pdfjs-dist");
 
-let workerConfigured = false;
+let pdfjsReady: Promise<PdfJsModule> | null = null;
 
-function ensurePdfWorker(): void {
-  if (!workerConfigured) {
-    pdfjs.GlobalWorkerOptions.workerSrc = pdfjsWorker;
-    workerConfigured = true;
+async function getPdfJs(): Promise<PdfJsModule | null> {
+  if (typeof window === "undefined") return null;
+  if (!pdfjsReady) {
+    pdfjsReady = Promise.all([
+      import("pdfjs-dist"),
+      import("pdfjs-dist/build/pdf.worker.min.mjs?url"),
+    ]).then(([pdfjs, worker]) => {
+      pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
+      return pdfjs;
+    });
   }
+  return pdfjsReady;
 }
 
 /**
@@ -17,7 +23,8 @@ export async function renderFirstPageThumbFromBase64(
   pdfBase64: string,
   maxCssWidthPx: number,
 ): Promise<string | null> {
-  ensurePdfWorker();
+  const pdfjs = await getPdfJs();
+  if (!pdfjs) return null;
   let bytes: Uint8Array;
   try {
     bytes = Uint8Array.from(atob(pdfBase64), (c) => c.charCodeAt(0));

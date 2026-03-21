@@ -6,13 +6,24 @@
     openProject,
     pickProjectFolder,
     createFromTemplate,
+    createEmptyProject,
+    renameProject,
   } from "$lib/tauri/api";
   import RecentProjectRow from "$lib/components/RecentProjectRow.svelte";
+  import InputModal from "$lib/components/InputModal.svelte";
+  import { appSettings } from "$lib/appSettings.svelte";
+  import { t } from "$lib/i18n/locale.svelte";
+  import { openSettingsModal } from "$lib/settingsModal.svelte";
 
   let recent = $state<string[]>([]);
   let busy = $state(false);
   let error = $state<string | null>(null);
   let selectedFolder = $state<string | null>(null);
+  let renameModalOpen = $state(false);
+  let renamePath = $state<string | null>(null);
+  let newProjectModalOpen = $state(false);
+  let newProjectParent = $state<string | null>(null);
+  let newProjectKind = $state<"empty" | "thesis" | null>(null);
 
   const RECENT_HUB_LIMIT = 6;
 
@@ -34,6 +45,16 @@
     const p = normalizePath(projectPath);
     if (p === f) return true;
     return p.startsWith(f + "/");
+  }
+
+  function formatHubError(msg: string): string {
+    if (
+      msg.includes("not a PaperDesk project") ||
+      msg.includes("missing main.typ")
+    ) {
+      return t("hub.openNotAProject");
+    }
+    return msg;
   }
 
   function folderDisplayName(folderPath: string): string {
@@ -94,12 +115,14 @@
     error = null;
     busy = true;
     try {
-      const p = await pickProjectFolder();
+      const p = await pickProjectFolder(t("dialog.openProjectFolder"), {
+        defaultPath: appSettings.defaultProjectDir.trim() || undefined,
+      });
       if (!p) return;
       await openProject(p);
       await goto("/project");
     } catch (e) {
-      error = String(e);
+      error = formatHubError(String(e));
     } finally {
       busy = false;
     }
@@ -112,20 +135,93 @@
       await openProject(p);
       await goto("/project");
     } catch (e) {
+      error = formatHubError(String(e));
+    } finally {
+      busy = false;
+    }
+  }
+
+  function closeNewProjectModal() {
+    newProjectModalOpen = false;
+    newProjectParent = null;
+    newProjectKind = null;
+  }
+
+  async function submitNewProject(name: string) {
+    const parent = newProjectParent;
+    const kind = newProjectKind;
+    if (!parent || !kind) return;
+    error = null;
+    busy = true;
+    try {
+      if (kind === "thesis") {
+        await createFromTemplate("thesis", parent, name);
+      } else {
+        await createEmptyProject(parent, name);
+      }
+      closeNewProjectModal();
+      await goto("/project");
+    } catch (e) {
+      error = formatHubError(String(e));
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function newFromThesisTemplate() {
+    error = null;
+    busy = true;
+    try {
+      const p = await pickProjectFolder(t("dialog.newProjectParentFolder"), {
+        defaultPath: appSettings.defaultProjectDir.trim() || undefined,
+      });
+      if (!p) return;
+      newProjectParent = p;
+      newProjectKind = "thesis";
+      newProjectModalOpen = true;
+    } catch (e) {
       error = String(e);
     } finally {
       busy = false;
     }
   }
 
-  async function newFromTemplate(id: "article" | "thesis") {
+  function openRenameModal(projectPath: string) {
+    renamePath = projectPath;
+    renameModalOpen = true;
+  }
+
+  function closeRenameModal() {
+    renameModalOpen = false;
+    renamePath = null;
+  }
+
+  async function submitProjectRename(name: string) {
+    if (!renamePath) return;
     error = null;
     busy = true;
     try {
-      const p = await pickProjectFolder();
+      await renameProject(renamePath, name);
+      closeRenameModal();
+      await refresh();
+    } catch (e) {
+      error = String(e);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function newEmptyProject() {
+    error = null;
+    busy = true;
+    try {
+      const p = await pickProjectFolder(t("dialog.newProjectParentFolder"), {
+        defaultPath: appSettings.defaultProjectDir.trim() || undefined,
+      });
       if (!p) return;
-      await createFromTemplate(id, p);
-      await goto("/project");
+      newProjectParent = p;
+      newProjectKind = "empty";
+      newProjectModalOpen = true;
     } catch (e) {
       error = String(e);
     } finally {
@@ -136,35 +232,66 @@
 
 <main class="hub">
   <header class="hub-header">
-    <h1>PaperDesk</h1>
-    <p class="tagline">Local Typst writing environment</p>
+    <div class="hub-header-top">
+      <h1>{t("app.title")}</h1>
+      <button
+        type="button"
+        class="hub-settings-btn"
+        onclick={openSettingsModal}
+        title={t("settings.open")}
+        aria-label={t("settings.open")}
+      >
+        <svg
+          width="22"
+          height="22"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />
+          <path
+            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1Z"
+          />
+        </svg>
+      </button>
+    </div>
+    <p class="tagline">{t("app.tagline")}</p>
   </header>
 
   {#if error}
     <p class="err" role="alert">{error}</p>
   {/if}
 
-  <section class="actions">
-    <button type="button" class="primary" disabled={busy} onclick={openFolder}>
-      Open project folder
-    </button>
-    <div class="templates">
-      <span class="label">New from template</span>
-      <button type="button" disabled={busy} onclick={() => newFromTemplate("article")}>
-        Article
+  <div class="hub-actions-wrap">
+    <section class="actions">
+      <button type="button" class="primary" disabled={busy} onclick={openFolder}>
+        {t("hub.openProjectFolder")}
       </button>
-      <button type="button" disabled={busy} onclick={() => newFromTemplate("thesis")}>
-        Thesis
-      </button>
-    </div>
-  </section>
+      <div class="templates">
+        <span class="label">{t("hub.newProject")}</span>
+        <p class="templates-hint muted">{t("hub.newProjectsAsSubfolders")}</p>
+        <button type="button" disabled={busy} onclick={newFromThesisTemplate}>
+          {t("hub.thesisTemplate")}
+        </button>
+        <button type="button" disabled={busy} onclick={newEmptyProject}>
+          {t("hub.emptyProject")}
+        </button>
+      </div>
+    </section>
+  </div>
 
   <div class="hub-stack">
     <section class="recent">
-      <h2>Recently opened</h2>
-      <p class="section-hint">Last {RECENT_HUB_LIMIT} projects</p>
+      <h2>{t("hub.recentlyOpened")}</h2>
+      <p class="section-hint">
+        {t("hub.lastNProjects", { n: RECENT_HUB_LIMIT })}
+      </p>
       {#if recent.length === 0}
-        <p class="muted">No recent projects yet.</p>
+        <p class="muted">{t("hub.noRecentYet")}</p>
       {:else}
         <ul class="recent-card-list">
           {#each recentOnHub as p (p)}
@@ -173,6 +300,8 @@
               displayName={folderDisplayName(p)}
               {busy}
               onclick={() => openRecent(p)}
+              onRename={() => openRenameModal(p)}
+              renameAria={t("project.renameAria")}
             />
           {/each}
         </ul>
@@ -180,8 +309,8 @@
     </section>
 
     <section class="folders">
-      <h2>Folders</h2>
-      <p class="section-hint">Group by parent directory (e.g. uni modules)</p>
+      <h2>{t("hub.folders")}</h2>
+      <p class="section-hint">{t("hub.foldersHint")}</p>
 
       {#if selectedFolder}
         <div class="folder-detail">
@@ -191,10 +320,10 @@
             disabled={busy}
             onclick={clearFolderSelection}
           >
-            ← All folders
+            {t("hub.allFolders")}
           </button>
           <header class="folder-detail-header">
-            <span class="folder-detail-kicker">Current folder</span>
+            <span class="folder-detail-kicker">{t("hub.currentFolder")}</span>
             <h3 class="folder-detail-title" title={selectedFolder}>
               {folderDisplayName(selectedFolder)}
             </h3>
@@ -202,23 +331,50 @@
           </header>
           {#if projectsInSelectedFolder.length === 0}
             <p class="folder-projects-empty muted">
-              No projects from your recent list are in this folder.
+              {t("hub.noProjectsInFolder")}
             </p>
           {:else}
             <div class="folder-projects-block">
-              <h4 class="folder-projects-label">Projects in this folder</h4>
+              <h4 class="folder-projects-label">
+                {t("hub.projectsInFolder")}
+              </h4>
               <ul class="folder-project-list">
                 {#each projectsInSelectedFolder as p (p)}
                   <li class="folder-project-item">
-                    <button
-                      type="button"
-                      class="folder-project-btn"
-                      disabled={busy}
-                      onclick={() => openRecent(p)}
-                    >
-                      <span class="folder-project-name">{folderDisplayName(p)}</span>
-                      <span class="folder-project-path">{p}</span>
-                    </button>
+                    <div class="folder-project-row">
+                      <button
+                        type="button"
+                        class="folder-project-btn"
+                        disabled={busy}
+                        onclick={() => openRecent(p)}
+                      >
+                        <span class="folder-project-name">{folderDisplayName(p)}</span>
+                        <span class="folder-project-path">{p}</span>
+                      </button>
+                      <button
+                        type="button"
+                        class="folder-project-rename"
+                        disabled={busy}
+                        onclick={() => openRenameModal(p)}
+                        title={t("project.renameAria")}
+                        aria-label={t("project.renameAria")}
+                      >
+                        <svg
+                          width="18"
+                          height="18"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="2"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          aria-hidden="true"
+                        >
+                          <path d="M12 20h9" />
+                          <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                        </svg>
+                      </button>
+                    </div>
                   </li>
                 {/each}
               </ul>
@@ -226,9 +382,9 @@
           {/if}
         </div>
       {:else if recent.length === 0}
-        <p class="muted">Open a project to see folders here.</p>
+        <p class="muted">{t("hub.openProjectToSeeFolders")}</p>
       {:else if allFolders.length === 0}
-        <p class="muted">No parent folders found for recent projects.</p>
+        <p class="muted">{t("hub.noParentFolders")}</p>
       {:else}
         <ul class="folder-list">
           {#each allFolders as f (f)}
@@ -249,6 +405,29 @@
       {/if}
     </section>
   </div>
+
+  <InputModal
+    open={renameModalOpen}
+    title={t("project.renameTitle")}
+    hint={t("project.renameHint")}
+    initialValue={renamePath ? folderDisplayName(renamePath) : ""}
+    submitLabel={t("project.renameSubmit")}
+    onSubmit={(v) => void submitProjectRename(v)}
+    onClose={closeRenameModal}
+  />
+  <InputModal
+    open={newProjectModalOpen}
+    title={newProjectKind === "thesis"
+      ? t("hub.newProjectNameTitleThesis")
+      : t("hub.newProjectNameTitleEmpty")}
+    hint={newProjectParent
+      ? t("hub.newProjectNameHint", { parent: newProjectParent })
+      : ""}
+    initialValue={newProjectKind === "thesis" ? "thesis" : "project"}
+    submitLabel={t("project.create")}
+    onSubmit={(v) => void submitNewProject(v)}
+    onClose={closeNewProjectModal}
+  />
 </main>
 
 <style>
@@ -278,16 +457,27 @@
 
   .section-hint {
     margin: -0.35rem 0 0.65rem;
-    font-size: 0.8rem;
+    font-size: 1rem;
     color: var(--pd-muted);
     line-height: 1.35;
   }
 
-  .hub-header h1 {
-    margin: 0 0 0.35rem;
+  .hub-header-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 0.35rem;
+  }
+
+  .hub-header-top h1 {
+    margin: 0;
+    flex: 1;
+    min-width: 0;
     font-weight: 600;
     letter-spacing: -0.02em;
     font-size: 2rem;
+    line-height: 1.15;
   }
 
   .tagline {
@@ -301,8 +491,41 @@
     margin-top: 1.25rem;
   }
 
-  .actions {
+  .hub-actions-wrap {
     margin-top: 2rem;
+  }
+
+  .hub-settings-btn {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    padding: 0;
+    border-radius: 10px;
+    border: 1px solid color-mix(in srgb, var(--pd-accent) 42%, var(--pd-border));
+    background: color-mix(in srgb, var(--pd-accent) 22%, var(--pd-surface));
+    color: color-mix(in srgb, var(--pd-accent) 55%, var(--pd-text));
+    cursor: pointer;
+    box-shadow:
+      0 1px 0 color-mix(in srgb, var(--pd-accent) 22%, transparent),
+      0 4px 14px rgb(0 0 0 / 0.28);
+  }
+
+  .hub-settings-btn:hover {
+    color: var(--pd-text);
+    border-color: color-mix(in srgb, var(--pd-accent) 58%, var(--pd-border));
+    background: color-mix(in srgb, var(--pd-accent) 30%, var(--pd-surface));
+  }
+
+  .hub-settings-btn:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--pd-accent) 55%, transparent);
+    outline-offset: 2px;
+  }
+
+  .actions {
+    margin-top: 0;
     display: flex;
     flex-direction: column;
     gap: 1.25rem;
@@ -339,10 +562,17 @@
 
   .templates .label {
     width: 100%;
-    font-size: 0.8rem;
+    font-size: 1rem;
     text-transform: uppercase;
     letter-spacing: 0.06em;
     color: var(--pd-muted);
+  }
+
+  .templates-hint {
+    width: 100%;
+    margin: -0.15rem 0 0.15rem;
+    font-size: 1rem;
+    line-height: 1.35;
   }
 
   .templates button {
@@ -358,7 +588,7 @@
   }
 
   .recent h2 {
-    font-size: 0.85rem;
+    font-size: 1rem;
     text-transform: uppercase;
     letter-spacing: 0.08em;
     color: var(--pd-muted);
@@ -385,12 +615,80 @@
     margin-bottom: 0.3rem;
   }
 
+  .folder-project-row {
+    position: relative;
+    display: flex;
+    align-items: stretch;
+    min-width: 0;
+  }
+
+  .folder-project-row .folder-project-btn {
+    flex: 1;
+    min-width: 0;
+    padding-right: 2.65rem;
+  }
+
+  .folder-project-rename {
+    position: absolute;
+    top: 50%;
+    right: 0.4rem;
+    transform: translateY(-50%);
+    z-index: 2;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    padding: 0;
+    border-radius: 6px;
+    border: 1px solid var(--pd-border);
+    background: color-mix(in srgb, var(--pd-surface) 92%, transparent);
+    backdrop-filter: blur(6px);
+    color: var(--pd-muted);
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgb(0 0 0 / 0.18);
+    transition:
+      opacity 0.12s ease,
+      visibility 0.12s ease;
+  }
+
+  @media (hover: hover) {
+    .folder-project-rename {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    .folder-project-row:hover .folder-project-rename,
+    .folder-project-row:focus-within .folder-project-rename {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+    }
+
+    .folder-project-row:hover .folder-project-rename:disabled,
+    .folder-project-row:focus-within .folder-project-rename:disabled {
+      opacity: 0.45;
+    }
+  }
+
+  .folder-project-rename:hover:not(:disabled) {
+    border-color: var(--pd-muted);
+    color: var(--pd-text);
+    background: var(--pd-bg);
+  }
+
+  .folder-project-rename:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
   .folder-project-list .folder-project-item:last-child {
     margin-bottom: 0;
   }
 
   .folders h2 {
-    font-size: 0.85rem;
+    font-size: 1rem;
     text-transform: uppercase;
     letter-spacing: 0.08em;
     color: var(--pd-muted);
@@ -423,11 +721,11 @@
 
   .folder-row-name {
     font-weight: 500;
-    font-size: 0.95rem;
+    font-size: 1rem;
   }
 
   .folder-row-path {
-    font-size: 0.78rem;
+    font-size: 1rem;
     color: var(--pd-muted);
     word-break: break-all;
     line-height: 1.3;
@@ -448,7 +746,7 @@
   .folder-detail-kicker {
     display: block;
     margin: 0 0 0.2rem;
-    font-size: 0.62rem;
+    font-size: 1rem;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.08em;
@@ -460,7 +758,7 @@
     border: none;
     color: var(--pd-accent);
     padding: 0 0 0.5rem;
-    font-size: 0.82rem;
+    font-size: 1rem;
     cursor: pointer;
   }
 
@@ -475,7 +773,7 @@
 
   .folder-detail-title {
     margin: 0 0 0.25rem;
-    font-size: 1.02rem;
+    font-size: 1rem;
     font-weight: 600;
     letter-spacing: -0.015em;
     line-height: 1.25;
@@ -484,7 +782,7 @@
 
   .folder-detail-path {
     margin: 0;
-    font-size: 0.72rem;
+    font-size: 1rem;
     color: var(--pd-muted);
     word-break: break-all;
     line-height: 1.35;
@@ -498,7 +796,7 @@
 
   .folder-projects-label {
     margin: 0 0 0.45rem;
-    font-size: 0.65rem;
+    font-size: 1rem;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.07em;
@@ -509,7 +807,7 @@
     margin-top: 0.75rem;
     padding-top: 0.75rem;
     border-top: 1px solid var(--pd-border);
-    font-size: 0.88rem;
+    font-size: 1rem;
     line-height: 1.45;
   }
 
@@ -525,7 +823,7 @@
     background: var(--pd-surface);
     color: var(--pd-text);
     text-align: left;
-    font-size: 0.82rem;
+    font-size: 1rem;
     cursor: pointer;
   }
 
@@ -542,11 +840,11 @@
   .folder-project-name {
     font-weight: 500;
     color: var(--pd-text);
-    font-size: 0.86rem;
+    font-size: 1rem;
   }
 
   .folder-project-path {
-    font-size: 0.7rem;
+    font-size: 1rem;
     color: var(--pd-muted);
     word-break: break-all;
     line-height: 1.28;

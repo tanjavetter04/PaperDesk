@@ -1,19 +1,28 @@
+mod bib_watch;
 mod commands;
 mod project;
 mod tinymist_preview;
 mod typst_engine;
 
 use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
 use std::sync::Mutex;
 
 use tauri::Manager;
 
 use commands::compile_cmd::{compile_project, compile_project_at_path, export_pdf_to_path};
-use commands::fs::{list_project_files, read_text_file, write_text_file};
-use commands::project::{
-    add_recent_project, close_project, create_from_template, get_open_project, get_recent_projects,
-    open_project,
+use commands::fs::{
+    create_project_dir, list_project_files, move_project_path, read_text_file, write_text_file,
 };
+use commands::history_cmd::{
+    history_checkpoint, history_diff_workdir, history_get_status, history_list_commits,
+    history_respond_enable, history_respond_existing_git, history_restore,
+};
+use commands::project::{
+    add_recent_project, close_project, create_empty_project, create_from_template, get_open_project,
+    get_recent_projects, open_project, rename_project,
+};
+use bib_watch::restart_bib_watcher;
 use tinymist_preview::{restart_tinymist_preview, start_tinymist_preview, TinymistSession};
 
 /// Shared application state (current project + paths).
@@ -26,12 +35,16 @@ pub struct AppState {
     /// `resources/bin/tinymist` from build.rs, when present (packaged app or after local build).
     pub bundled_tinymist: Option<PathBuf>,
     pub tinymist: Mutex<Option<TinymistSession>>,
+    /// Set when project files change on disk; consumed by history checkpoints.
+    pub history_dirty: AtomicBool,
+    /// Serialize Git history operations (commit / restore).
+    pub history_git_lock: Mutex<()>,
+    pub bib_watch: Mutex<Option<bib_watch::BibWatchSession>>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let resolver = app.path();
@@ -68,6 +81,9 @@ pub fn run() {
                 resource_fonts_dir,
                 bundled_tinymist,
                 tinymist: Mutex::new(None),
+                history_dirty: AtomicBool::new(false),
+                history_git_lock: Mutex::new(()),
+                bib_watch: Mutex::new(None),
             });
             Ok(())
         })
@@ -75,17 +91,29 @@ pub fn run() {
             get_recent_projects,
             add_recent_project,
             open_project,
+            rename_project,
             get_open_project,
             close_project,
             list_project_files,
+            create_project_dir,
+            move_project_path,
             read_text_file,
             write_text_file,
             compile_project,
             compile_project_at_path,
             export_pdf_to_path,
             create_from_template,
+            create_empty_project,
             start_tinymist_preview,
             restart_tinymist_preview,
+            history_get_status,
+            history_respond_enable,
+            history_respond_existing_git,
+            history_checkpoint,
+            history_list_commits,
+            history_diff_workdir,
+            history_restore,
+            restart_bib_watcher,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

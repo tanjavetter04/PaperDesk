@@ -1,20 +1,15 @@
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use base64::Engine;
-use serde::Deserialize;
 
+use crate::project::paths::MAIN_TYP;
 use crate::typst_engine::{self, PaperDeskWorld};
 use crate::typst_engine::CompileOutcome;
 use crate::AppState;
 
-#[derive(Deserialize)]
-struct PaperDeskMeta {
-    entry: Option<String>,
-}
-
 /// Open editor buffer for live preview (compiled instead of on-disk text for that path).
-#[derive(Deserialize)]
+#[derive(serde::Deserialize)]
 pub struct PreviewSource {
     pub path: String,
     pub text: String,
@@ -22,28 +17,9 @@ pub struct PreviewSource {
     pub cursor_byte_offset: Option<u32>,
 }
 
-fn resolve_entry(root: &Path, entry: Option<String>) -> String {
-    if let Some(e) = entry {
-        let t = e.trim();
-        if !t.is_empty() {
-            return t.replace('\\', "/");
-        }
-    }
-    let meta_path = root.join("paperdesk.json");
-    if let Ok(raw) = fs::read_to_string(&meta_path) {
-        if let Ok(m) = serde_json::from_str::<PaperDeskMeta>(&raw) {
-            if let Some(e) = m.entry.filter(|s| !s.is_empty()) {
-                return e.replace('\\', "/");
-            }
-        }
-    }
-    "main.typ".into()
-}
-
 #[tauri::command]
 pub fn compile_project(
     state: tauri::State<'_, AppState>,
-    entry: Option<String>,
     preview_source: Option<PreviewSource>,
 ) -> Result<CompileOutcome, String> {
     let root = state
@@ -52,7 +28,6 @@ pub fn compile_project(
         .map_err(|e| e.to_string())?
         .clone()
         .ok_or_else(|| "no project open".to_string())?;
-    let rel = resolve_entry(&root, entry);
     let preview_cursor = preview_source.as_ref().and_then(|p| {
         p.cursor_byte_offset
             .map(|o| (p.path.clone(), o as usize))
@@ -65,7 +40,7 @@ pub fn compile_project(
         .map(|(path, off)| (path.as_str(), *off));
     let mut world = PaperDeskWorld::new(
         root,
-        &rel,
+        MAIN_TYP,
         state.typst_package_cache.clone(),
         overrides,
         state.resource_fonts_dir.clone(),
@@ -95,7 +70,6 @@ pub fn compile_project(
 pub fn compile_project_at_path(
     state: tauri::State<'_, AppState>,
     project_path: String,
-    entry: Option<String>,
 ) -> Result<CompileOutcome, String> {
     let root = PathBuf::from(project_path.trim());
     let root = root
@@ -104,10 +78,9 @@ pub fn compile_project_at_path(
     if !root.is_dir() {
         return Err("project path must be a directory".into());
     }
-    let rel = resolve_entry(&root, entry);
     let mut world = PaperDeskWorld::new(
         root,
-        &rel,
+        MAIN_TYP,
         state.typst_package_cache.clone(),
         vec![],
         state.resource_fonts_dir.clone(),
@@ -137,7 +110,6 @@ pub fn compile_project_at_path(
 pub fn export_pdf_to_path(
     state: tauri::State<'_, AppState>,
     path: String,
-    entry: Option<String>,
 ) -> Result<(), String> {
     let root = state
         .project_root
@@ -145,10 +117,9 @@ pub fn export_pdf_to_path(
         .map_err(|e| e.to_string())?
         .clone()
         .ok_or_else(|| "no project open".to_string())?;
-    let rel = resolve_entry(&root, entry);
     let mut world = PaperDeskWorld::new(
         root,
-        &rel,
+        MAIN_TYP,
         state.typst_package_cache.clone(),
         vec![],
         state.resource_fonts_dir.clone(),

@@ -43,6 +43,14 @@ fn main() {
 
     fs::create_dir_all(&bin_dir).expect("create resources/bin");
 
+    // Linux returns ETXTBSY if we truncate `dest` while a tinymist process still runs from that
+    // path (common during `tauri dev` rebuilds). Write a temp file and rename into place instead.
+    let dest_part = bin_dir.join(if is_windows {
+        ".tinymist-download.exe.part"
+    } else {
+        ".tinymist-download.part"
+    });
+
     let ext = if is_windows { "zip" } else { "tar.gz" };
     let url = format!(
         "https://github.com/Myriad-Dreamin/tinymist/releases/download/{TINYMIST_RELEASE_TAG}/tinymist-{target}.{ext}"
@@ -70,20 +78,43 @@ fn main() {
             );
         });
 
+    let _ = fs::remove_file(&dest_part);
     if is_windows {
-        extract_zip(&body, &dest);
+        extract_zip(&body, &dest_part);
     } else {
-        extract_tar_gz(&body, &dest);
+        extract_tar_gz(&body, &dest_part);
     }
 
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let mut perms = fs::metadata(&dest)
+        let mut perms = fs::metadata(&dest_part)
             .expect("tinymist metadata")
             .permissions();
         perms.set_mode(0o755);
-        fs::set_permissions(&dest, perms).expect("chmod tinymist");
+        fs::set_permissions(&dest_part, perms).expect("chmod tinymist");
+    }
+
+    #[cfg(unix)]
+    fs::rename(&dest_part, &dest).unwrap_or_else(|e| {
+        panic!(
+            "could not install tinymist to {} ({e}).\n\
+             Stop any running PaperDesk / tinymist using that binary, then rebuild.\n\
+             Or set TINYMIST_SKIP_BUNDLE=1 and install tinymist on PATH.",
+            dest.display()
+        );
+    });
+    #[cfg(not(unix))]
+    {
+        let _ = fs::remove_file(&dest);
+        fs::rename(&dest_part, &dest).unwrap_or_else(|e| {
+            panic!(
+                "could not install tinymist to {} ({e}).\n\
+                 Close PaperDesk / tinymist if the file is locked, then rebuild.\n\
+                 Or set TINYMIST_SKIP_BUNDLE=1 and install tinymist on PATH.",
+                dest.display()
+            );
+        });
     }
 
     fs::write(&stamp_path, TINYMIST_RELEASE_TAG).expect("write tinymist version stamp");

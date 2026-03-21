@@ -1,13 +1,12 @@
 //! Typst `World` backed by the project directory (adapted from typst-cli's `world.rs`, Apache-2.0).
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::{Arc, Mutex, OnceLock};
 use std::{fmt, fs, io, mem};
 
 use chrono::{Datelike, FixedOffset, Local, Utc};
 use ecow::{EcoString, eco_format};
-use parking_lot::Mutex;
-use rustc_hash::FxHashMap;
 use typst::diag::{FileError, FileResult};
 use typst::foundations::{Bytes, Datetime, Dict};
 use typst::syntax::{FileId, Source, VirtualPath};
@@ -21,17 +20,59 @@ use typst_timing::timed;
 
 use super::noop_progress::NoopProgress;
 
+/// Shared result of a font scan (system + embedded + configured dirs). Cached per distinct dir set.
+struct FontBundle {
+    book: FontBook,
+    slots: Vec<FontSlot>,
+}
+
+/// Normalized key for font cache (canonical paths, sorted).
+#[derive(Clone, Hash, PartialEq, Eq)]
+struct FontDirsKey {
+    dirs: Vec<PathBuf>,
+}
+
+fn font_dirs_cache_key(font_dirs: &[PathBuf]) -> FontDirsKey {
+    let mut dirs: Vec<PathBuf> = font_dirs
+        .iter()
+        .filter_map(|p| p.canonicalize().ok())
+        .collect();
+    dirs.sort();
+    FontDirsKey { dirs }
+}
+
+fn shared_font_bundle(font_dirs: Vec<PathBuf>) -> Arc<FontBundle> {
+    static CACHE: Mutex<Option<HashMap<FontDirsKey, Arc<FontBundle>>>> = Mutex::new(None);
+
+    let key = font_dirs_cache_key(&font_dirs);
+    let mut guard = CACHE.lock().unwrap_or_else(|e| e.into_inner());
+    let map = guard.get_or_insert_with(HashMap::new);
+    if let Some(arc) = map.get(&key) {
+        return Arc::clone(arc);
+    }
+    let mut searcher = Fonts::searcher();
+    searcher.include_system_fonts(true);
+    let fonts = searcher.search_with(font_dirs);
+    let bundle = Arc::new(FontBundle {
+        book: fonts.book,
+        slots: fonts.fonts,
+    });
+    map.insert(key, Arc::clone(&bundle));
+    bundle
+}
+
 /// A world that reads sources only from a fixed project root on disk.
 pub struct PaperDeskWorld {
     workdir: Option<PathBuf>,
     root: PathBuf,
     main: FileId,
     /// Unsaved editor buffers: compiled as if written to disk (live preview).
-    source_overrides: FxHashMap<FileId, EcoString>,
+    source_overrides: HashMap<FileId, EcoString>,
     library: LazyHash<Library>,
     book: LazyHash<FontBook>,
-    fonts: Vec<FontSlot>,
-    slots: Mutex<FxHashMap<FileId, FileSlot>>,
+    /// Font scan shared across worlds with the same extra font directories (avoids rescanning system fonts every compile).
+    font_bundle: Arc<FontBundle>,
+    slots: Mutex<HashMap<FileId, FileSlot>>,
     package_storage: PackageStorage,
     now: Now,
 }
@@ -72,7 +113,7 @@ impl PaperDeskWorld {
 
         let main = resolve_source_file_id(&root, main_relative)?;
 
-        let mut overrides: FxHashMap<FileId, EcoString> = FxHashMap::default();
+        let mut overrides: HashMap<FileId, EcoString> = HashMap::new();
         for (rel, text) in source_overrides {
             let rel = rel.replace('\\', "/");
             let id = resolve_source_file_id(&root, rel.trim())?;
@@ -92,9 +133,7 @@ impl PaperDeskWorld {
             }
         }
 
-        let mut fonts = Fonts::searcher();
-        fonts.include_system_fonts(true);
-        let fonts = fonts.search_with(font_dirs);
+        let font_bundle = shared_font_bundle(font_dirs);
 
         let downloader = Downloader::new(concat!("paperdesk/", env!("CARGO_PKG_VERSION")));
         let package_storage = PackageStorage::new(Some(package_cache), None, downloader);
@@ -105,9 +144,9 @@ impl PaperDeskWorld {
             main,
             source_overrides: overrides,
             library: LazyHash::new(library),
-            book: LazyHash::new(fonts.book),
-            fonts: fonts.fonts,
-            slots: Mutex::new(FxHashMap::default()),
+            book: LazyHash::new(font_bundle.book.clone()),
+            font_bundle,
+            slots: Mutex::new(HashMap::new()),
             package_storage,
             now: Now::System(OnceLock::new()),
         })
@@ -129,8 +168,12 @@ impl PaperDeskWorld {
     }
 
     pub fn reset(&mut self) {
-        #[allow(clippy::iter_over_hash_type, reason = "order does not matter")]
-        for slot in self.slots.get_mut().values_mut() {
+        for slot in self
+            .slots
+            .get_mut()
+            .expect("typst world slots mutex poisoned")
+            .values_mut()
+        {
             slot.reset();
         }
         let Now::System(time_lock) = &mut self.now;
@@ -141,7 +184,10 @@ impl PaperDeskWorld {
     where
         F: FnOnce(&mut FileSlot) -> T,
     {
-        let mut map = self.slots.lock();
+        let mut map = self
+            .slots
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         f(map.entry(id).or_insert_with(|| FileSlot::new(id)))
     }
 }
@@ -170,7 +216,7 @@ impl World for PaperDeskWorld {
     }
 
     fn font(&self, index: usize) -> Option<Font> {
-        self.fonts.get(index)?.get()
+        self.font_bundle.slots.get(index)?.get()
     }
 
     fn today(&self, offset: Option<i64>) -> Option<Datetime> {
@@ -214,7 +260,7 @@ impl FileSlot {
         &mut self,
         project_root: &Path,
         package_storage: &PackageStorage,
-        overrides: &FxHashMap<FileId, EcoString>,
+        overrides: &HashMap<FileId, EcoString>,
     ) -> FileResult<Source> {
         self.source.get_or_init(
             || load_bytes(self.id, project_root, package_storage, overrides),
@@ -234,7 +280,7 @@ impl FileSlot {
         &mut self,
         project_root: &Path,
         package_storage: &PackageStorage,
-        overrides: &FxHashMap<FileId, EcoString>,
+        overrides: &HashMap<FileId, EcoString>,
     ) -> FileResult<Bytes> {
         self.file.get_or_init(
             || load_bytes(self.id, project_root, package_storage, overrides),
@@ -305,7 +351,7 @@ fn load_bytes(
     id: FileId,
     project_root: &Path,
     package_storage: &PackageStorage,
-    overrides: &FxHashMap<FileId, EcoString>,
+    overrides: &HashMap<FileId, EcoString>,
 ) -> FileResult<Vec<u8>> {
     if let Some(t) = overrides.get(&id) {
         return Ok(t.as_bytes().to_vec());

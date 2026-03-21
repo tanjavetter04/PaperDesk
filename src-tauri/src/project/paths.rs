@@ -1,5 +1,8 @@
 use std::path::{Component, Path, PathBuf};
 
+/// Typst project entry (fixed; not configurable).
+pub const MAIN_TYP: &str = "main.typ";
+
 /// Lexically join `relative` to canonical `root` and ensure the result stays under `root`.
 pub fn join_under_root(root: &Path, relative: &str) -> Result<PathBuf, String> {
     let rel = Path::new(relative);
