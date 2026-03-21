@@ -1,156 +1,234 @@
 <script lang="ts">
-  import { invoke } from "@tauri-apps/api/core";
+  import { onMount } from "svelte";
+  import { goto } from "$app/navigation";
+  import {
+    getRecentProjects,
+    openProject,
+    pickProjectFolder,
+    createFromTemplate,
+  } from "$lib/tauri/api";
 
-  let name = $state("");
-  let greetMsg = $state("");
+  let recent = $state<string[]>([]);
+  let busy = $state(false);
+  let error = $state<string | null>(null);
 
-  async function greet(event: Event) {
-    event.preventDefault();
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    greetMsg = await invoke("greet", { name });
+  async function refresh() {
+    try {
+      recent = await getRecentProjects();
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
+  onMount(() => {
+    void refresh();
+  });
+
+  async function openFolder() {
+    error = null;
+    busy = true;
+    try {
+      const p = await pickProjectFolder();
+      if (!p) return;
+      await openProject(p);
+      await goto("/project");
+    } catch (e) {
+      error = String(e);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function openRecent(p: string) {
+    error = null;
+    busy = true;
+    try {
+      await openProject(p);
+      await goto("/project");
+    } catch (e) {
+      error = String(e);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function newFromTemplate(id: "article" | "thesis") {
+    error = null;
+    busy = true;
+    try {
+      const p = await pickProjectFolder();
+      if (!p) return;
+      await createFromTemplate(id, p);
+      await goto("/project");
+    } catch (e) {
+      error = String(e);
+    } finally {
+      busy = false;
+    }
   }
 </script>
 
-<main class="container">
-  <h1>Welcome to Tauri + Svelte</h1>
+<main class="hub">
+  <header class="hub-header">
+    <h1>PaperDesk</h1>
+    <p class="tagline">Local Typst writing environment</p>
+  </header>
 
-  <div class="row">
-    <a href="https://vite.dev" target="_blank">
-      <img src="/vite.svg" class="logo vite" alt="Vite Logo" />
-    </a>
-    <a href="https://tauri.app" target="_blank">
-      <img src="/tauri.svg" class="logo tauri" alt="Tauri Logo" />
-    </a>
-    <a href="https://svelte.dev" target="_blank">
-      <img src="/svelte.svg" class="logo svelte-kit" alt="SvelteKit Logo" />
-    </a>
-  </div>
-  <p>Click on the Tauri, Vite, and SvelteKit logos to learn more.</p>
+  {#if error}
+    <p class="err" role="alert">{error}</p>
+  {/if}
 
-  <form class="row" onsubmit={greet}>
-    <input id="greet-input" placeholder="Enter a name..." bind:value={name} />
-    <button type="submit">Greet</button>
-  </form>
-  <p>{greetMsg}</p>
+  <section class="actions">
+    <button type="button" class="primary" disabled={busy} onclick={openFolder}>
+      Open project folder
+    </button>
+    <div class="templates">
+      <span class="label">New from template</span>
+      <button type="button" disabled={busy} onclick={() => newFromTemplate("article")}>
+        Article
+      </button>
+      <button type="button" disabled={busy} onclick={() => newFromTemplate("thesis")}>
+        Thesis
+      </button>
+    </div>
+  </section>
+
+  <section class="recent">
+    <h2>Recent</h2>
+    {#if recent.length === 0}
+      <p class="muted">No recent projects yet.</p>
+    {:else}
+      <ul>
+        {#each recent as p (p)}
+          <li>
+            <button type="button" class="linkish" disabled={busy} onclick={() => openRecent(p)}>
+              {p}
+            </button>
+          </li>
+        {/each}
+      </ul>
+    {/if}
+  </section>
 </main>
 
 <style>
-.logo.vite:hover {
-  filter: drop-shadow(0 0 2em #747bff);
-}
-
-.logo.svelte-kit:hover {
-  filter: drop-shadow(0 0 2em #ff3e00);
-}
-
-:root {
-  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
-  font-size: 16px;
-  line-height: 24px;
-  font-weight: 400;
-
-  color: #0f0f0f;
-  background-color: #f6f6f6;
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  -webkit-text-size-adjust: 100%;
-}
-
-.container {
-  margin: 0;
-  padding-top: 10vh;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  text-align: center;
-}
-
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: 0.75s;
-}
-
-.logo.tauri:hover {
-  filter: drop-shadow(0 0 2em #24c8db);
-}
-
-.row {
-  display: flex;
-  justify-content: center;
-}
-
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-
-a:hover {
-  color: #535bf2;
-}
-
-h1 {
-  text-align: center;
-}
-
-input,
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  color: #0f0f0f;
-  background-color: #ffffff;
-  transition: border-color 0.25s;
-  box-shadow: 0 2px 2px rgba(0, 0, 0, 0.2);
-}
-
-button {
-  cursor: pointer;
-}
-
-button:hover {
-  border-color: #396cd8;
-}
-button:active {
-  border-color: #396cd8;
-  background-color: #e8e8e8;
-}
-
-input,
-button {
-  outline: none;
-}
-
-#greet-input {
-  margin-right: 5px;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    color: #f6f6f6;
-    background-color: #2f2f2f;
+  .hub {
+    max-width: 42rem;
+    margin: 0 auto;
+    padding: 3rem 1.5rem;
   }
 
-  a:hover {
-    color: #24c8db;
+  .hub-header h1 {
+    margin: 0 0 0.35rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    font-size: 2rem;
   }
 
-  input,
-  button {
-    color: #ffffff;
-    background-color: #0f0f0f98;
+  .tagline {
+    margin: 0;
+    color: var(--pd-muted);
+    font-size: 1rem;
   }
-  button:active {
-    background-color: #0f0f0f69;
-  }
-}
 
+  .err {
+    color: var(--pd-error);
+    margin-top: 1.25rem;
+  }
+
+  .actions {
+    margin-top: 2rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+
+  .primary {
+    padding: 0.65rem 1.1rem;
+    border-radius: 8px;
+    border: 1px solid var(--pd-accent);
+    background: color-mix(in srgb, var(--pd-accent) 18%, transparent);
+    color: var(--pd-text);
+    font-weight: 500;
+  }
+
+  .primary:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--pd-accent) 28%, transparent);
+  }
+
+  .primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .templates {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 0.75rem;
+    padding: 1rem;
+    background: var(--pd-surface);
+    border: 1px solid var(--pd-border);
+    border-radius: 10px;
+  }
+
+  .templates .label {
+    width: 100%;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--pd-muted);
+  }
+
+  .templates button {
+    padding: 0.45rem 0.85rem;
+    border-radius: 6px;
+    border: 1px solid var(--pd-border);
+    background: var(--pd-bg);
+    color: var(--pd-text);
+  }
+
+  .templates button:hover:not(:disabled) {
+    border-color: var(--pd-muted);
+  }
+
+  .recent {
+    margin-top: 2.5rem;
+  }
+
+  .recent h2 {
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--pd-muted);
+    margin: 0 0 0.75rem;
+  }
+
+  .muted {
+    color: var(--pd-muted);
+    margin: 0;
+  }
+
+  .recent ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .recent li {
+    margin-bottom: 0.35rem;
+  }
+
+  .linkish {
+    background: none;
+    border: none;
+    color: var(--pd-accent);
+    padding: 0.2rem 0;
+    text-align: left;
+    font-size: 0.95rem;
+  }
+
+  .linkish:hover:not(:disabled) {
+    text-decoration: underline;
+  }
 </style>

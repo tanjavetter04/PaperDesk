@@ -13,17 +13,18 @@
     "windows": [
       {
         "title": "paperdesk",
-        "width": 800,
-        "height": 600
+        "width": 1280,
+        "height": 800
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src ipc: http://ipc.localhost https://ipc.localhost; frame-src 'self' blob: data:;"
     }
   },
   "bundle": {
     "active": true,
     "targets": "all",
+    "resources": ["resources"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
