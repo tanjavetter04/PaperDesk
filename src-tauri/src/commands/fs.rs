@@ -1,6 +1,7 @@
 use std::fs;
 use std::path::Path;
 
+use crate::project::history;
 use crate::project::paths::{join_under_root, MAIN_TYP};
 use crate::AppState;
 
@@ -101,7 +102,10 @@ pub fn create_project_dir(
     if path.exists() {
         return Err("a file or folder with that path already exists".into());
     }
-    fs::create_dir_all(&path).map_err(|e| e.to_string())
+    fs::create_dir_all(&path).map_err(|e| e.to_string())?;
+    drop(guard);
+    let _ = history::try_checkpoint(&state, &root, "paperdesk: new folder", true);
+    Ok(())
 }
 
 /// Move or rename a file or folder under the project root. Parent directories of `to` are created.
@@ -134,7 +138,10 @@ pub fn move_project_path(
     if let Some(parent) = to_path.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    fs::rename(&from_path, &to_path).map_err(|e| e.to_string())
+    fs::rename(&from_path, &to_path).map_err(|e| e.to_string())?;
+    drop(guard);
+    let _ = history::try_checkpoint(&state, &root, "paperdesk: move/rename", true);
+    Ok(())
 }
 
 #[tauri::command]
@@ -161,5 +168,7 @@ pub fn write_text_file(
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    fs::write(&path, content).map_err(|e| e.to_string())
+    fs::write(&path, content).map_err(|e| e.to_string())?;
+    history::note_dirty(&state);
+    Ok(())
 }

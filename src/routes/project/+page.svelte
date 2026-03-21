@@ -8,6 +8,8 @@
   import DiagnosticsPanel from "$lib/components/DiagnosticsPanel.svelte";
   import InputModal from "$lib/components/InputModal.svelte";
   import MessageModal from "$lib/components/MessageModal.svelte";
+  import ConfirmModal from "$lib/components/ConfirmModal.svelte";
+  import HistoryPanel from "$lib/components/HistoryPanel.svelte";
   import {
     getOpenProject,
     listProjectEntries,
@@ -19,9 +21,18 @@
     closeProject,
     startTinymistPreview,
     restartTinymistPreview,
+    historyGetStatus,
+    historyRespondEnable,
+    historyRespondExistingGit,
+    historyCheckpoint,
+    historyListCommits,
+    historyDiffWorkdir,
+    historyRestore,
   } from "$lib/tauri/api";
   import type {
     CompileDiagnostic,
+    HistoryCommitSummary,
+    HistoryStatus,
     PreviewScrollToSource,
     PreviewSource,
     ProjectEntry,
@@ -52,8 +63,22 @@
   let messageModalOpen = $state(false);
   let messageModalText = $state("");
 
+  let historyStatus = $state<HistoryStatus | null>(null);
+  let historyPromptEnableOpen = $state(false);
+  let historyPromptExistingOpen = $state(false);
+  let historyPanelOpen = $state(false);
+  let historyCommits = $state<HistoryCommitSummary[]>([]);
+  let historyBusy = $state(false);
+  let historyDiffText = $state("");
+  let historyDiffOpen = $state(false);
+  let historyRestoreCommitId = $state<string | null>(null);
+  let editorReloadTick = $state(0);
+
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
   let diagnosticsTimer: ReturnType<typeof setTimeout> | null = null;
+  let historyIdleTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const HISTORY_IDLE_MS = 10_000;
 
   const editorHostCommands: {
     save: () => void | Promise<void>;
@@ -67,6 +92,18 @@
   const LIVE_SAVE_DEBOUNCE_MS = 140;
   /** Typst compile for the diagnostics panel (tinymist preview does not feed this list). */
   const DIAGNOSTICS_DEBOUNCE_MS = 420;
+
+  const historyActive = $derived.by(() => {
+    const s = historyStatus;
+    if (!s) return false;
+    return (
+      s.enabled &&
+      s.hasGitDir &&
+      s.useExistingGit === true &&
+      !s.promptEnable &&
+      !s.promptExistingGit
+    );
+  });
 
   const PREVIEW_WIDTH_STORAGE = "paperdesk.previewWidthPx";
   const SIDEBAR_WIDTH_STORAGE = "paperdesk.sidebarWidthPx";
@@ -294,6 +331,11 @@
       }
       try {
         await persistFile(selectedPath, buffer);
+        try {
+          await historyCheckpoint("manual-save", true);
+        } catch {
+          /* best effort */
+        }
       } catch {
         saveLabel = "dirty";
       }
@@ -408,6 +450,149 @@
     messageModalOpen = true;
   }
 
+  function clearHistoryIdleTimer() {
+    if (historyIdleTimer) {
+      clearTimeout(historyIdleTimer);
+      historyIdleTimer = null;
+    }
+  }
+
+  function bumpHistoryIdleTimer() {
+    if (!historyActive) return;
+    clearHistoryIdleTimer();
+    historyIdleTimer = setTimeout(() => {
+      historyIdleTimer = null;
+      void historyCheckpoint("idle", false);
+    }, HISTORY_IDLE_MS);
+  }
+
+  async function syncHistoryStatus(showPrompts = false) {
+    try {
+      const s = await historyGetStatus();
+      historyStatus = s;
+      if (showPrompts) {
+        if (s.promptEnable) historyPromptEnableOpen = true;
+        else if (s.promptExistingGit) historyPromptExistingOpen = true;
+      }
+    } catch {
+      historyStatus = null;
+    }
+  }
+
+  async function refreshHistoryCommits() {
+    if (!historyActive) return;
+    historyBusy = true;
+    try {
+      historyCommits = await historyListCommits(80);
+    } catch (e) {
+      showMessage(formatUserError(e));
+      historyCommits = [];
+    } finally {
+      historyBusy = false;
+    }
+  }
+
+  async function openHistoryPanel() {
+    // Avoid a pending idle checkpoint firing right when opening the panel (feels like "History caused a commit").
+    clearHistoryIdleTimer();
+    await syncHistoryStatus(false);
+    if (!historyActive) {
+      showMessage(
+        "Projekt-Verlauf ist nicht aktiv (oder ohne vorhandenes Git nicht freigegeben).",
+      );
+      return;
+    }
+    historyPanelOpen = true;
+    await refreshHistoryCommits();
+  }
+
+  async function handleHistorySnapshot() {
+    try {
+      await historyCheckpoint("manual", true);
+      await refreshHistoryCommits();
+    } catch (e) {
+      showMessage(formatUserError(e));
+    }
+  }
+
+  async function handleHistoryDiff(commitId: string) {
+    try {
+      historyDiffText = await historyDiffWorkdir(commitId);
+      historyDiffOpen = true;
+    } catch (e) {
+      showMessage(formatUserError(e));
+    }
+  }
+
+  async function confirmHistoryRestore() {
+    const id = historyRestoreCommitId;
+    historyRestoreCommitId = null;
+    if (!id) return;
+    try {
+      if (saveTimer) {
+        clearTimeout(saveTimer);
+        saveTimer = null;
+      }
+      if (selectedPath) {
+        await persistFile(selectedPath, buffer);
+      }
+      await historyRestore(id, null);
+      historyDiffOpen = false;
+      editorReloadTick += 1;
+      await refreshFiles();
+      await ensurePreview(true);
+      if (selectedPath?.endsWith(".typ")) {
+        void refreshDiagnostics();
+      }
+      await refreshHistoryCommits();
+    } catch (e) {
+      showMessage(formatUserError(e));
+    }
+  }
+
+  async function onHistoryEnableYes() {
+    historyPromptEnableOpen = false;
+    try {
+      await historyRespondEnable(true);
+      await syncHistoryStatus(false);
+      if (historyStatus?.promptExistingGit) {
+        historyPromptExistingOpen = true;
+      }
+    } catch (e) {
+      showMessage(formatUserError(e));
+    }
+  }
+
+  async function onHistoryEnableNo() {
+    historyPromptEnableOpen = false;
+    try {
+      await historyRespondEnable(false);
+      await syncHistoryStatus(false);
+    } catch (e) {
+      showMessage(formatUserError(e));
+    }
+  }
+
+  async function onHistoryExistingYes() {
+    historyPromptExistingOpen = false;
+    try {
+      await historyRespondExistingGit(true);
+      await syncHistoryStatus(false);
+    } catch (e) {
+      showMessage(formatUserError(e));
+    }
+  }
+
+  async function onHistoryExistingNo() {
+    historyPromptExistingOpen = false;
+    try {
+      await historyRespondExistingGit(false);
+      await syncHistoryStatus(false);
+    } catch (e) {
+      showMessage(formatUserError(e));
+    }
+  }
+
   function handleNewFile() {
     newFileModalOpen = true;
   }
@@ -430,6 +615,11 @@
     }
     try {
       await writeTextFile(rel, "");
+      try {
+        await historyCheckpoint("new-file", true);
+      } catch {
+        /* best effort */
+      }
       projectEntries = upsertProjectEntries(projectEntries, ...entriesForNewFile(rel));
       selectFile(rel);
     } catch (e) {
@@ -500,6 +690,7 @@
       }
       rootPath = open;
       await Promise.all([refreshFiles(), ensurePreview()]);
+      await syncHistoryStatus(true);
     })();
     return () => {
       gone = true;
@@ -530,12 +721,14 @@
   onDestroy(() => {
     if (saveTimer) clearTimeout(saveTimer);
     if (diagnosticsTimer) clearTimeout(diagnosticsTimer);
+    clearHistoryIdleTimer();
   });
 
   async function persistFile(path: string, text: string) {
     saveLabel = "saving";
     await writeTextFile(path, text);
     saveLabel = "saved";
+    bumpHistoryIdleTimer();
   }
 
   /** Write without updating UI; used when switching files so the tab change is not blocked. */
@@ -602,6 +795,7 @@
     buffer = text;
     scheduleSave();
     scheduleDiagnosticsRefresh();
+    bumpHistoryIdleTimer();
   }
 
   function selectFile(p: string) {
@@ -637,6 +831,12 @@
         /* keep going */
       }
     }
+    clearHistoryIdleTimer();
+    try {
+      await historyCheckpoint("hub", false);
+    } catch {
+      /* best effort */
+    }
     await closeProject();
     await goto("/");
   }
@@ -644,6 +844,11 @@
   async function doExport() {
     try {
       await exportPdf(t("dialog.exportPdf"));
+      try {
+        await historyCheckpoint("export", true);
+      } catch {
+        /* best effort */
+      }
     } catch {
       /* dialog plugin surfaces errors */
     }
@@ -654,6 +859,11 @@
       const r = await compileProject(previewSourceForCompile());
       diagnostics = r.diagnostics;
       await refreshFiles();
+      try {
+        await historyCheckpoint("compile", true);
+      } catch {
+        /* best effort */
+      }
     } catch (e) {
       diagnostics = [
         {
@@ -716,6 +926,9 @@
       <span class="pill" data-state={previewLabel}>{previewStatusLabel()}</span>
     </span>
     <span class="spacer"></span>
+    <button type="button" class="action" onclick={() => void openHistoryPanel()}>
+      History
+    </button>
     <button type="button" class="action" onclick={compileNow}>
       {t("project.compile")}
     </button>
@@ -756,6 +969,7 @@
     <section class="center">
       <EditorPane
         path={selectedPath}
+        reloadTick={editorReloadTick}
         hostCommands={editorHostCommands}
         onDocumentChange={onEditorChange}
         onReady={onEditorReady}
@@ -835,6 +1049,53 @@
     open={messageModalOpen}
     message={messageModalText}
     onClose={() => (messageModalOpen = false)}
+  />
+
+  <ConfirmModal
+    open={historyPromptEnableOpen}
+    title="Projekt-Verlauf"
+    message={`Git-basierte Änderungshistorie für dieses Projekt aktivieren?\n\nCheckpoints landen unter refs/paperdesk/history und ändern deinen Git-HEAD nicht.`}
+    confirmLabel="Aktivieren"
+    cancelLabel="Nicht jetzt"
+    onConfirm={() => void onHistoryEnableYes()}
+    onCancel={() => void onHistoryEnableNo()}
+  />
+
+  <ConfirmModal
+    open={historyPromptExistingOpen}
+    title="Vorhandenes Git-Repository"
+    message="In diesem Ordner gibt es bereits ein .git-Verzeichnis. Soll PaperDesk die Historie dort speichern (empfohlen)?\n\n„Nein“ deaktiviert den Verlauf für dieses Projekt."
+    confirmLabel="Ja, nutzen"
+    cancelLabel="Nein"
+    onConfirm={() => void onHistoryExistingYes()}
+    onCancel={() => void onHistoryExistingNo()}
+  />
+
+  <ConfirmModal
+    open={historyRestoreCommitId !== null}
+    title="Stand wiederherstellen?"
+    message="Der ausgewählte Checkpoint wird in das Arbeitsverzeichnis geschrieben (bestehende Dateien werden überschrieben). Fortfahren?"
+    confirmLabel="Wiederherstellen"
+    cancelLabel="Abbrechen"
+    onConfirm={() => void confirmHistoryRestore()}
+    onCancel={() => (historyRestoreCommitId = null)}
+  />
+
+  <HistoryPanel
+    open={historyPanelOpen}
+    commits={historyCommits}
+    busy={historyBusy}
+    diffText={historyDiffText}
+    diffOpen={historyDiffOpen}
+    onClose={() => {
+      historyPanelOpen = false;
+      historyDiffOpen = false;
+    }}
+    onRefresh={() => void refreshHistoryCommits()}
+    onSnapshot={() => void handleHistorySnapshot()}
+    onRequestDiff={(id) => void handleHistoryDiff(id)}
+    onCloseDiff={() => (historyDiffOpen = false)}
+    onRestore={(id) => (historyRestoreCommitId = id)}
   />
 </div>
 

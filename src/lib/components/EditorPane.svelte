@@ -37,6 +37,8 @@
 
   let {
     path,
+    /** Bump to force a re-read from disk for the same `path` (e.g. after history restore). */
+    reloadTick = 0,
     onDocumentChange,
     onReady,
     onCursorActivity,
@@ -46,6 +48,7 @@
     hostCommands,
   }: {
     path: string | null;
+    reloadTick?: number;
     hostCommands?: HostCommands;
     onDocumentChange: (text: string) => void;
     /** Fires after `path` was read from disk and the editor instance is created. */
@@ -132,6 +135,7 @@
   $effect(() => {
     const el = host;
     const p = path;
+    void reloadTick;
     if (!el) return;
 
     if (!p) {

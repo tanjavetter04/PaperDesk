@@ -146,3 +146,58 @@ export async function createFromTemplate(
 export async function createEmptyProject(targetDir: string): Promise<string> {
   return invoke("create_empty_project", { targetDir });
 }
+
+// --- Project history (Git, refs/paperdesk/history) ---
+
+export type HistoryStatus = {
+  hasGitDir: boolean;
+  enabled: boolean;
+  promptEnable: boolean;
+  promptExistingGit: boolean;
+  useExistingGit: boolean | null;
+  historyRefExists: boolean;
+  tipShort: string | null;
+};
+
+export type HistoryCommitSummary = {
+  id: string;
+  shortId: string;
+  message: string;
+  timeUnix: number;
+};
+
+export async function historyGetStatus(): Promise<HistoryStatus> {
+  return invoke("history_get_status");
+}
+
+export async function historyRespondEnable(enable: boolean): Promise<void> {
+  return invoke("history_respond_enable", { enable });
+}
+
+export async function historyRespondExistingGit(useExisting: boolean): Promise<void> {
+  return invoke("history_respond_existing_git", { useExisting });
+}
+
+export async function historyCheckpoint(
+  reason: string,
+  force: boolean,
+): Promise<string | null> {
+  return invoke("history_checkpoint", { reason, force });
+}
+
+export async function historyListCommits(
+  limit?: number,
+): Promise<HistoryCommitSummary[]> {
+  return invoke("history_list_commits", { limit: limit ?? null });
+}
+
+export async function historyDiffWorkdir(commitId: string): Promise<string> {
+  return invoke("history_diff_workdir", { commitId });
+}
+
+export async function historyRestore(
+  commitId: string,
+  paths?: string[] | null,
+): Promise<void> {
+  return invoke("history_restore", { commitId, paths: paths ?? null });
+}

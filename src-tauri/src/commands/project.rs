@@ -85,6 +85,14 @@ pub fn get_open_project(state: tauri::State<'_, AppState>) -> Result<Option<Stri
 
 #[tauri::command]
 pub fn close_project(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    let root = state
+        .project_root
+        .lock()
+        .map_err(|e| e.to_string())?
+        .clone();
+    if let Some(ref r) = root {
+        let _ = crate::project::history::try_checkpoint(&state, r, "paperdesk: close", false);
+    }
     tinymist_preview::stop(&state)?;
     *state.project_root.lock().map_err(|e| e.to_string())? = None;
     Ok(())
