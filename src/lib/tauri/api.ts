@@ -88,6 +88,17 @@ export async function restartTinymistPreview(entry?: string | null): Promise<str
   });
 }
 
+/** Compile project at `projectPath` without switching the open project (e.g. hub previews). */
+export async function compileProjectAtPath(
+  projectPath: string,
+  entry?: string | null,
+): Promise<CompileOutcome> {
+  return invoke("compile_project_at_path", {
+    projectPath,
+    entry: entry ?? null,
+  });
+}
+
 export async function exportPdf(entry?: string | null): Promise<void> {
   const path = await save({
     title: "Export PDF",

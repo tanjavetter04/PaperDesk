@@ -8,7 +8,7 @@ use std::sync::Mutex;
 
 use tauri::Manager;
 
-use commands::compile_cmd::{compile_project, export_pdf_to_path};
+use commands::compile_cmd::{compile_project, compile_project_at_path, export_pdf_to_path};
 use commands::fs::{list_project_files, read_text_file, write_text_file};
 use commands::project::{
     add_recent_project, close_project, create_from_template, get_open_project, get_recent_projects,
@@ -81,6 +81,7 @@ pub fn run() {
             read_text_file,
             write_text_file,
             compile_project,
+            compile_project_at_path,
             export_pdf_to_path,
             create_from_template,
             start_tinymist_preview,

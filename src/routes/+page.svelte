@@ -7,6 +7,7 @@
     pickProjectFolder,
     createFromTemplate,
   } from "$lib/tauri/api";
+  import RecentProjectRow from "$lib/components/RecentProjectRow.svelte";
 
   let recent = $state<string[]>([]);
   let busy = $state(false);
@@ -158,21 +159,21 @@
     </div>
   </section>
 
-  <div class="hub-grid">
+  <div class="hub-stack">
     <section class="recent">
       <h2>Recently opened</h2>
       <p class="section-hint">Last {RECENT_HUB_LIMIT} projects</p>
       {#if recent.length === 0}
         <p class="muted">No recent projects yet.</p>
       {:else}
-        <ul>
+        <ul class="recent-card-list">
           {#each recentOnHub as p (p)}
-            <li>
-              <button type="button" class="linkish" disabled={busy} onclick={() => openRecent(p)}>
-                <span class="path-primary">{folderDisplayName(p)}</span>
-                <span class="path-secondary">{p}</span>
-              </button>
-            </li>
+            <RecentProjectRow
+              path={p}
+              displayName={folderDisplayName(p)}
+              {busy}
+              onclick={() => openRecent(p)}
+            />
           {/each}
         </ul>
       {/if}
@@ -257,18 +258,20 @@
     padding: 3rem 1.5rem;
   }
 
-  .hub-grid {
+  .hub-stack {
     margin-top: 2.5rem;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 2rem 2.5rem;
-    align-items: start;
+    display: flex;
+    flex-direction: column;
+    gap: 2.25rem;
   }
 
-  @media (max-width: 720px) {
-    .hub-grid {
-      grid-template-columns: 1fr;
-    }
+  .recent-card-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(9.75rem, 1fr));
+    gap: 0.85rem 1rem;
   }
 
   .section-hint {
@@ -365,7 +368,6 @@
     margin: 0;
   }
 
-  .recent ul,
   .folder-list,
   .folder-project-list {
     list-style: none;
@@ -373,7 +375,6 @@
     padding: 0;
   }
 
-  .recent li,
   .folder-list li {
     margin-bottom: 0.35rem;
   }
@@ -384,33 +385,6 @@
 
   .folder-project-list .folder-project-item:last-child {
     margin-bottom: 0;
-  }
-
-  .linkish {
-    background: none;
-    border: none;
-    color: var(--pd-accent);
-    padding: 0.2rem 0;
-    text-align: left;
-    font-size: 0.95rem;
-    max-width: 100%;
-  }
-
-  .linkish:hover:not(:disabled) {
-    text-decoration: underline;
-  }
-
-  .path-primary {
-    font-weight: 500;
-    color: var(--pd-text);
-  }
-
-  .path-secondary {
-    display: block;
-    font-size: 0.78rem;
-    color: var(--pd-muted);
-    word-break: break-all;
-    line-height: 1.3;
   }
 
   .folders h2 {

@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use base64::Engine;
 use serde::Deserialize;
@@ -73,6 +73,48 @@ pub fn compile_project(
     .map_err(|e| e.to_string())?;
 
     match typst_engine::compile_to_pdf(&mut world, preview_jump) {
+        Ok((pdf, diagnostics, preview_page)) => Ok(CompileOutcome {
+            ok: true,
+            pdf_base64: Some(
+                base64::engine::general_purpose::STANDARD.encode(pdf),
+            ),
+            diagnostics,
+            preview_page,
+        }),
+        Err(diagnostics) => Ok(CompileOutcome {
+            ok: false,
+            pdf_base64: None,
+            diagnostics,
+            preview_page: None,
+        }),
+    }
+}
+
+/// Compile a project at an arbitrary directory without changing the open project (hub thumbnails).
+#[tauri::command]
+pub fn compile_project_at_path(
+    state: tauri::State<'_, AppState>,
+    project_path: String,
+    entry: Option<String>,
+) -> Result<CompileOutcome, String> {
+    let root = PathBuf::from(project_path.trim());
+    let root = root
+        .canonicalize()
+        .map_err(|e| format!("invalid project path: {e}"))?;
+    if !root.is_dir() {
+        return Err("project path must be a directory".into());
+    }
+    let rel = resolve_entry(&root, entry);
+    let mut world = PaperDeskWorld::new(
+        root,
+        &rel,
+        state.typst_package_cache.clone(),
+        vec![],
+        state.resource_fonts_dir.clone(),
+    )
+    .map_err(|e| e.to_string())?;
+
+    match typst_engine::compile_to_pdf(&mut world, None) {
         Ok((pdf, diagnostics, preview_page)) => Ok(CompileOutcome {
             ok: true,
             pdf_base64: Some(
