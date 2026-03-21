@@ -9,6 +9,7 @@
     createEmptyProject,
   } from "$lib/tauri/api";
   import RecentProjectRow from "$lib/components/RecentProjectRow.svelte";
+  import { t } from "$lib/i18n/locale.svelte";
 
   let recent = $state<string[]>([]);
   let busy = $state(false);
@@ -95,7 +96,7 @@
     error = null;
     busy = true;
     try {
-      const p = await pickProjectFolder();
+      const p = await pickProjectFolder(t("dialog.projectFolder"));
       if (!p) return;
       await openProject(p);
       await goto("/project");
@@ -123,7 +124,7 @@
     error = null;
     busy = true;
     try {
-      const p = await pickProjectFolder();
+      const p = await pickProjectFolder(t("dialog.projectFolder"));
       if (!p) return;
       await createFromTemplate("thesis", p);
       await goto("/project");
@@ -138,7 +139,7 @@
     error = null;
     busy = true;
     try {
-      const p = await pickProjectFolder();
+      const p = await pickProjectFolder(t("dialog.projectFolder"));
       if (!p) return;
       await createEmptyProject(p);
       await goto("/project");
@@ -152,8 +153,8 @@
 
 <main class="hub">
   <header class="hub-header">
-    <h1>PaperDesk</h1>
-    <p class="tagline">Local Typst writing environment</p>
+    <h1>{t("app.title")}</h1>
+    <p class="tagline">{t("app.tagline")}</p>
   </header>
 
   {#if error}
@@ -162,25 +163,27 @@
 
   <section class="actions">
     <button type="button" class="primary" disabled={busy} onclick={openFolder}>
-      Open project folder
+      {t("hub.openProjectFolder")}
     </button>
     <div class="templates">
-      <span class="label">New project</span>
+      <span class="label">{t("hub.newProject")}</span>
       <button type="button" disabled={busy} onclick={newFromThesisTemplate}>
-        Thesis template
+        {t("hub.thesisTemplate")}
       </button>
       <button type="button" disabled={busy} onclick={newEmptyProject}>
-        Empty project
+        {t("hub.emptyProject")}
       </button>
     </div>
   </section>
 
   <div class="hub-stack">
     <section class="recent">
-      <h2>Recently opened</h2>
-      <p class="section-hint">Last {RECENT_HUB_LIMIT} projects</p>
+      <h2>{t("hub.recentlyOpened")}</h2>
+      <p class="section-hint">
+        {t("hub.lastNProjects", { n: RECENT_HUB_LIMIT })}
+      </p>
       {#if recent.length === 0}
-        <p class="muted">No recent projects yet.</p>
+        <p class="muted">{t("hub.noRecentYet")}</p>
       {:else}
         <ul class="recent-card-list">
           {#each recentOnHub as p (p)}
@@ -196,8 +199,8 @@
     </section>
 
     <section class="folders">
-      <h2>Folders</h2>
-      <p class="section-hint">Group by parent directory (e.g. uni modules)</p>
+      <h2>{t("hub.folders")}</h2>
+      <p class="section-hint">{t("hub.foldersHint")}</p>
 
       {#if selectedFolder}
         <div class="folder-detail">
@@ -207,10 +210,10 @@
             disabled={busy}
             onclick={clearFolderSelection}
           >
-            ← All folders
+            {t("hub.allFolders")}
           </button>
           <header class="folder-detail-header">
-            <span class="folder-detail-kicker">Current folder</span>
+            <span class="folder-detail-kicker">{t("hub.currentFolder")}</span>
             <h3 class="folder-detail-title" title={selectedFolder}>
               {folderDisplayName(selectedFolder)}
             </h3>
@@ -218,11 +221,13 @@
           </header>
           {#if projectsInSelectedFolder.length === 0}
             <p class="folder-projects-empty muted">
-              No projects from your recent list are in this folder.
+              {t("hub.noProjectsInFolder")}
             </p>
           {:else}
             <div class="folder-projects-block">
-              <h4 class="folder-projects-label">Projects in this folder</h4>
+              <h4 class="folder-projects-label">
+                {t("hub.projectsInFolder")}
+              </h4>
               <ul class="folder-project-list">
                 {#each projectsInSelectedFolder as p (p)}
                   <li class="folder-project-item">
@@ -242,9 +247,9 @@
           {/if}
         </div>
       {:else if recent.length === 0}
-        <p class="muted">Open a project to see folders here.</p>
+        <p class="muted">{t("hub.openProjectToSeeFolders")}</p>
       {:else if allFolders.length === 0}
-        <p class="muted">No parent folders found for recent projects.</p>
+        <p class="muted">{t("hub.noParentFolders")}</p>
       {:else}
         <ul class="folder-list">
           {#each allFolders as f (f)}

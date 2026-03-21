@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { ProjectEntry } from "$lib/tauri/api";
   import { buildFileTree, type FileTreeNode } from "$lib/editor/buildFileTree";
+  import { locale, t } from "$lib/i18n/locale.svelte";
 
   let {
     entries,
@@ -66,16 +67,17 @@
   );
 
   const moveButtonTooltip = $derived.by(() => {
+    void locale.value;
     if (!selectedFilePath) {
-      return "Keine Datei ausgewählt.";
+      return t("fileTree.moveNoneSelected");
     }
     if (selectedFilePath === "main.typ") {
-      return "main.typ kann nicht verschoben werden.";
+      return t("fileTree.moveMainLocked");
     }
     if (entries.find((e) => e.path === selectedFilePath && e.isDir)) {
-      return "Ordner können hier nicht verschoben werden.";
+      return t("fileTree.moveFolderUnsupported");
     }
-    return "Ausgewählte Datei verschieben";
+    return t("fileTree.moveSelectedFile");
   });
 
   function openMoveDialog() {
@@ -91,10 +93,20 @@
 
 <div class="tree">
   <div class="tree-head">
-    <span class="tree-title">Files</span>
+    <span class="tree-title">{t("fileTree.title")}</span>
     <span class="tree-actions">
-      <button type="button" class="icon-btn" title="Neue Datei" onclick={() => onNewFile()}>+</button>
-      <button type="button" class="icon-btn" title="Neuer Ordner" onclick={() => onNewFolder()}>
+      <button
+        type="button"
+        class="icon-btn"
+        title={t("fileTree.newFile")}
+        onclick={() => onNewFile()}
+      >+</button>
+      <button
+        type="button"
+        class="icon-btn"
+        title={t("fileTree.newFolder")}
+        onclick={() => onNewFolder()}
+      >
         <svg
           class="folder-add-icon"
           viewBox="0 0 24 24"
@@ -126,11 +138,14 @@
     </span>
   </div>
   {#if targetDirPath}
-    <div class="target-hint" title="Ziel für neue Dateien/Ordner">
-      Neu in: <code>{targetDirPath}</code>
+    <div class="target-hint" title={t("fileTree.targetHintTitle")}>
+      {t("fileTree.newIn")}
+      <code>{targetDirPath}</code>
     </div>
   {:else}
-    <div class="target-hint" title="Ziel für neue Dateien/Ordner">Neu im Projektstamm</div>
+    <div class="target-hint" title={t("fileTree.targetHintTitle")}>
+      {t("fileTree.newInRoot")}
+    </div>
   {/if}
 
   <ul class="tree-root">
@@ -239,24 +254,28 @@
     onclick={(e) => e.target === e.currentTarget && (moveOpen = false)}
   ></div>
   <div class="modal" role="dialog" aria-labelledby="move-dlg-title">
-    <h2 id="move-dlg-title">Datei verschieben</h2>
+    <h2 id="move-dlg-title">{t("fileTree.moveTitle")}</h2>
     <p class="modal-sub">
       {#if selectedFilePath}
         <code>{selectedFilePath}</code>
       {/if}
     </p>
     <label class="field">
-      Zielordner
+      {t("fileTree.destinationFolder")}
       <select bind:value={moveDestDir} class="select">
-        <option value="">(Projektstamm)</option>
+        <option value="">{t("fileTree.projectRootOption")}</option>
         {#each folderPaths as fp (fp)}
           <option value={fp}>{fp}</option>
         {/each}
       </select>
     </label>
     <div class="modal-btns">
-      <button type="button" class="ghost" onclick={() => (moveOpen = false)}>Abbrechen</button>
-      <button type="button" class="primary" onclick={confirmMove}>Verschieben</button>
+      <button type="button" class="ghost" onclick={() => (moveOpen = false)}>
+        {t("common.cancel")}
+      </button>
+      <button type="button" class="primary" onclick={confirmMove}>
+        {t("fileTree.move")}
+      </button>
     </div>
   </div>
 {/if}

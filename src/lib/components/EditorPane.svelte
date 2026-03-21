@@ -25,6 +25,7 @@
     compile?: () => void | Promise<void>;
   };
   import { readTextFile } from "$lib/tauri/api";
+  import { t } from "$lib/i18n/locale.svelte";
   import type { CompileDiagnostic } from "$lib/tauri/api";
   import {
     compileDiagnosticCursorPos,
@@ -212,7 +213,7 @@
     {#if path}
       <span class="path">{path}</span>
     {:else}
-      <span class="muted">Select a file</span>
+      <span class="muted">{t("editor.selectFile")}</span>
     {/if}
   </div>
   <div class="cm-host" bind:this={host}></div>

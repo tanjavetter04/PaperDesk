@@ -1,5 +1,6 @@
 <script lang="ts">
   import { tick, untrack } from "svelte";
+  import { t } from "$lib/i18n/locale.svelte";
   import * as pdfjs from "pdfjs-dist";
   import type { PDFDocumentProxy } from "pdfjs-dist";
   import pdfjsWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
@@ -201,13 +202,13 @@
 </script>
 
 <div class="preview">
-  <div class="head">Preview</div>
+  <div class="head">{t("previewPane.head")}</div>
   <div class="frame-wrap" class:frame-wrap--scroll={showPdf} bind:this={slot}>
     {#if previewUrl}
       <iframe
         class="preview-frame"
         src={previewUrl}
-        title="Live Typst preview"
+        title={t("previewPane.iframeTitle")}
         allow="fullscreen"
       ></iframe>
       {#if error}
@@ -221,7 +222,7 @@
         <p class="err-overlay">{loadError}</p>
       {/if}
     {:else}
-      <p class="placeholder">{error ?? "Starting live preview..."}</p>
+      <p class="placeholder">{error ?? t("previewPane.startingPlaceholder")}</p>
     {/if}
   </div>
 </div>

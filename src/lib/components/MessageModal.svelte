@@ -1,8 +1,10 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/locale.svelte";
+
   let {
     open,
     message,
-    title = "Hinweis",
+    title,
     onClose,
   }: {
     open: boolean;
@@ -10,6 +12,8 @@
     title?: string;
     onClose: () => void;
   } = $props();
+
+  const resolvedTitle = $derived(title ?? t("common.notice"));
 </script>
 
 {#if open}
@@ -19,10 +23,12 @@
     onclick={(e) => e.target === e.currentTarget && onClose()}
   ></div>
   <div class="modal" role="alertdialog" aria-modal="true" aria-labelledby="msg-modal-title">
-    <h2 id="msg-modal-title">{title}</h2>
+    <h2 id="msg-modal-title">{resolvedTitle}</h2>
     <p class="body">{message}</p>
     <div class="btns">
-      <button type="button" class="primary" onclick={onClose}>OK</button>
+      <button type="button" class="primary" onclick={onClose}>
+        {t("common.ok")}
+      </button>
     </div>
   </div>
 {/if}

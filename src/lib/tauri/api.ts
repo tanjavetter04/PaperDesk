@@ -44,11 +44,13 @@ export async function closeProject(): Promise<void> {
 }
 
 /** Folder picker via JS plugin (avoids GTK/WebView deadlocks from Rust `blocking_pick_*`). */
-export async function pickProjectFolder(): Promise<string | null> {
+export async function pickProjectFolder(
+  title = "Project folder",
+): Promise<string | null> {
   return open({
     directory: true,
     multiple: false,
-    title: "Project folder",
+    title,
   });
 }
 
@@ -111,9 +113,9 @@ export async function compileProjectAtPath(
   });
 }
 
-export async function exportPdf(): Promise<void> {
+export async function exportPdf(saveDialogTitle = "Export PDF"): Promise<void> {
   const path = await save({
-    title: "Export PDF",
+    title: saveDialogTitle,
     defaultPath: "export.pdf",
     filters: [{ name: "PDF", extensions: ["pdf"] }],
   });

@@ -26,6 +26,7 @@
     PreviewSource,
     ProjectEntry,
   } from "$lib/tauri/api";
+  import { t } from "$lib/i18n/locale.svelte";
 
   let rootPath = $state<string | null>(null);
   let projectEntries = $state<ProjectEntry[]>([]);
@@ -387,8 +388,8 @@
 
   function newItemHint(): string {
     return treeTargetDir
-      ? `Neu in: ${treeTargetDir}`
-      : "Neu im Projektstamm";
+      ? t("project.newInFolder", { folder: treeTargetDir })
+      : t("project.newInRoot");
   }
 
   function formatUserError(e: unknown): string {
@@ -398,7 +399,7 @@
       const m = (e as { message: unknown }).message;
       if (typeof m === "string") return m;
     }
-    return "Unbekannter Fehler.";
+    return t("project.unknownError");
   }
 
   function showMessage(text: string) {
@@ -418,12 +419,12 @@
     newFileModalOpen = false;
     const base = safeTreeBasename(raw);
     if (!base) {
-      showMessage("Ungültiger Name (keine Schrägstriche oder ..).");
+      showMessage(t("project.invalidName"));
       return;
     }
     const rel = treeTargetDir ? `${treeTargetDir}/${base}` : base;
     if (projectEntries.some((e) => e.path === rel)) {
-      showMessage("Dieser Pfad existiert bereits.");
+      showMessage(t("project.pathExists"));
       return;
     }
     try {
@@ -439,12 +440,12 @@
     newFolderModalOpen = false;
     const base = safeTreeBasename(raw);
     if (!base) {
-      showMessage("Ungültiger Name (keine Schrägstriche oder ..).");
+      showMessage(t("project.invalidName"));
       return;
     }
     const rel = treeTargetDir ? `${treeTargetDir}/${base}` : base;
     if (projectEntries.some((e) => e.path === rel)) {
-      showMessage("Dieser Pfad existiert bereits.");
+      showMessage(t("project.pathExists"));
       return;
     }
     try {
@@ -468,7 +469,7 @@
     const to = dest === "" ? base : `${dest}/${base}`;
     if (to === from) return;
     if (projectEntries.some((e) => e.path === to)) {
-      showMessage("Ziel existiert bereits.");
+      showMessage(t("project.destinationExists"));
       return;
     }
     try {
@@ -616,9 +617,7 @@
     const prevBuffer = buffer;
     if (prevPath) {
       void flushPathToDisk(prevPath, prevBuffer).catch(() => {
-        showMessage(
-          `Speichern von „${prevPath}“ ist fehlgeschlagen. Inhalt war nur im Speicher.`,
-        );
+        showMessage(t("project.saveFailed", { path: prevPath }));
       });
     }
     selectedPath = p;
@@ -643,7 +642,7 @@
 
   async function doExport() {
     try {
-      await exportPdf();
+      await exportPdf(t("dialog.exportPdf"));
     } catch {
       /* dialog plugin surfaces errors */
     }
@@ -690,19 +689,38 @@
       target: d,
     };
   }
+
+  function saveStatusLabel(): string {
+    if (saveLabel === "saved") return t("status.saved");
+    if (saveLabel === "saving") return t("status.saving");
+    return t("status.dirty");
+  }
+
+  function previewStatusLabel(): string {
+    if (previewLabel === "starting") return t("preview.starting");
+    if (previewLabel === "live") return t("preview.live");
+    if (previewLabel === "err") return t("preview.error");
+    return t("preview.idle");
+  }
 </script>
 
 <div class="ide">
   <header class="bar">
-    <button type="button" class="ghost" onclick={goHub}>← Projects</button>
+    <button type="button" class="ghost" onclick={goHub}>
+      {t("project.backToProjects")}
+    </button>
     <span class="proj" title={rootPath ?? ""}>{rootPath ?? ""}</span>
     <span class="status">
-      <span class="pill" data-state={saveLabel}>{saveLabel}</span>
-      <span class="pill" data-state={previewLabel}>{previewLabel}</span>
+      <span class="pill" data-state={saveLabel}>{saveStatusLabel()}</span>
+      <span class="pill" data-state={previewLabel}>{previewStatusLabel()}</span>
     </span>
     <span class="spacer"></span>
-    <button type="button" class="action" onclick={compileNow}>Compile</button>
-    <button type="button" class="action" onclick={doExport}>Export PDF</button>
+    <button type="button" class="action" onclick={compileNow}>
+      {t("project.compile")}
+    </button>
+    <button type="button" class="action" onclick={doExport}>
+      {t("project.exportPdf")}
+    </button>
   </header>
 
   <div class="main" bind:this={mainEl}>
@@ -727,7 +745,7 @@
       aria-valuenow={sidebarWidthPx}
       aria-valuemin={MIN_SIDEBAR_W}
       aria-valuemax={sidebarWidthMaxPx}
-      aria-label="Breite der Dateiansicht anpassen"
+      aria-label={t("aria.sidebarWidth")}
       onpointerdown={onSidebarSplitPointerDown}
       onpointermove={onSidebarSplitPointerMove}
       onpointerup={onSidebarSplitPointerUp}
@@ -753,7 +771,7 @@
       aria-valuenow={previewWidthPx}
       aria-valuemin={MIN_PREVIEW_W}
       aria-valuemax={previewWidthMaxPx}
-      aria-label="Breite der Vorschau anpassen"
+      aria-label={t("aria.previewWidth")}
       onpointerdown={onSplitPointerDown}
       onpointermove={onSplitPointerMove}
       onpointerup={onSplitPointerUp}
@@ -771,19 +789,19 @@
 
   <InputModal
     open={newFileModalOpen}
-    title="Neue Datei"
-    hint={`${newItemHint()} · nur Dateiname, z. B. chapter.typ`}
+    title={t("project.newFileTitle")}
+    hint={t("project.newFileHint", { hint: newItemHint() })}
     initialValue="chapter.typ"
-    submitLabel="Anlegen"
+    submitLabel={t("project.create")}
     onClose={() => (newFileModalOpen = false)}
     onSubmit={(v) => void confirmNewFile(v)}
   />
   <InputModal
     open={newFolderModalOpen}
-    title="Neuer Ordner"
-    hint={newItemHint()}
+    title={t("project.newFolderTitle")}
+    hint={t("project.newFolderHint", { hint: newItemHint() })}
     initialValue="sections"
-    submitLabel="Anlegen"
+    submitLabel={t("project.create")}
     onClose={() => (newFolderModalOpen = false)}
     onSubmit={(v) => void confirmNewFolder(v)}
   />

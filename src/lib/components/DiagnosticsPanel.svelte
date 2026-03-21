@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { CompileDiagnostic } from "$lib/tauri/api";
+  import { t } from "$lib/i18n/locale.svelte";
 
   let {
     diagnostics,
@@ -12,10 +13,10 @@
 </script>
 
 <div class="panel">
-  <div class="head">Diagnostics</div>
+  <div class="head">{t("diagnostics.head")}</div>
   <div class="body">
     {#if diagnostics.length === 0}
-      <p class="empty">No issues</p>
+      <p class="empty">{t("diagnostics.empty")}</p>
     {:else}
       <ul>
         {#each diagnostics as d, i (i)}

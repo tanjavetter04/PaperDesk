@@ -1,5 +1,6 @@
 <script lang="ts">
   import { tick } from "svelte";
+  import { t } from "$lib/i18n/locale.svelte";
 
   let {
     open,
@@ -69,7 +70,9 @@
       onkeydown={onKeydown}
     />
     <div class="btns">
-      <button type="button" class="ghost" onclick={onClose}>Abbrechen</button>
+      <button type="button" class="ghost" onclick={onClose}>
+        {t("common.cancel")}
+      </button>
       <button type="button" class="primary" onclick={submit}>{submitLabel}</button>
     </div>
   </div>
