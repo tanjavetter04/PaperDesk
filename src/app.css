@@ -1,4 +1,6 @@
 :root {
+  /* Native Form-Controls (z. B. <select>-Popup) an dunkles UI anpassen */
+  color-scheme: dark;
   --pd-bg: #1a1b1e;
   --pd-surface: #25262b;
   --pd-border: #373a40;
