@@ -43,6 +43,19 @@ export async function renameProject(
   return invoke("rename_project", { path, newName });
 }
 
+/** Copies the project folder next to the original under `newName`. Returns the new absolute path. */
+export async function duplicateProject(
+  path: string,
+  newName: string,
+): Promise<string> {
+  return invoke("duplicate_project", { path, newName });
+}
+
+/** Deletes the project folder from disk and drops it from recents (closes it when currently open). */
+export async function deleteProject(path: string): Promise<void> {
+  return invoke("delete_project", { path });
+}
+
 export async function getOpenProject(): Promise<string | null> {
   return invoke("get_open_project");
 }

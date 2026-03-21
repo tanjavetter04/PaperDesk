@@ -100,6 +100,16 @@ pub fn migrate_path_after_rename(
     Ok(())
 }
 
+/// Drop PaperDesk history preferences for a project root (e.g. after the folder was deleted).
+pub fn remove_store_entry_for_root(state: &AppState, root: &Path) -> Result<(), String> {
+    let key = project_key(root);
+    let mut store = load_store(state)?;
+    if store.projects.remove(&key).is_some() {
+        save_store(state, &store)?;
+    }
+    Ok(())
+}
+
 fn update_entry<F>(state: &AppState, root: &Path, f: F) -> Result<ProjectHistoryEntry, String>
 where
     F: FnOnce(&mut ProjectHistoryEntry),

@@ -203,8 +203,7 @@ pub fn get_open_project(state: tauri::State<'_, AppState>) -> Result<Option<Stri
         .map(|p| p.to_string_lossy().into_owned()))
 }
 
-#[tauri::command]
-pub fn close_project(state: tauri::State<'_, AppState>) -> Result<(), String> {
+fn shutdown_open_project(state: &AppState) -> Result<(), String> {
     let root = state
         .project_root
         .lock()
@@ -217,6 +216,11 @@ pub fn close_project(state: tauri::State<'_, AppState>) -> Result<(), String> {
     tinymist_preview::stop(&state)?;
     *state.project_root.lock().map_err(|e| e.to_string())? = None;
     Ok(())
+}
+
+#[tauri::command]
+pub fn close_project(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    shutdown_open_project(&state)
 }
 
 /// Creates `parent_dir/project_name` as a new empty directory (must not exist yet).
@@ -308,5 +312,102 @@ pub fn create_empty_project(
     let main_path = target.join(MAIN_TYP);
     fs::write(&main_path, []).map_err(|e| format!("failed to write {MAIN_TYP}: {e}"))?;
     activate_new_project(&state, target)
+}
+
+/// Copy `path` to a sibling folder named `new_name`. Does not open the copy; prepends it to recents.
+#[tauri::command]
+pub fn duplicate_project(
+    state: tauri::State<'_, AppState>,
+    path: String,
+    new_name: String,
+) -> Result<String, String> {
+    let name = validate_project_folder_name(&new_name)?;
+    let src = PathBuf::from(path.trim());
+    let src_canon = src
+        .canonicalize()
+        .map_err(|e| format!("invalid project path: {e}"))?;
+    if !src_canon.is_dir() {
+        return Err("project path must be a directory".into());
+    }
+    if !src_canon.join(MAIN_TYP).is_file() {
+        return Err(format!(
+            "cannot duplicate: missing {MAIN_TYP} in the project root"
+        ));
+    }
+    let parent = src_canon
+        .parent()
+        .ok_or_else(|| "cannot duplicate filesystem root".to_string())?;
+    let dest = parent.join(name);
+    if dest.exists() {
+        return Err("a file or folder with that name already exists".into());
+    }
+
+    copy_dir_all(&src_canon, &dest).map_err(|e| format!("failed to copy project: {e}"))?;
+    let new_canon = dest
+        .canonicalize()
+        .map_err(|e| format!("duplicated project but could not resolve path: {e}"))?;
+
+    let new_s = new_canon.to_string_lossy().to_string();
+    let mut paths = load_recent(&state);
+    paths.retain(|p| p != &new_s);
+    paths.insert(0, new_s.clone());
+    paths.truncate(RECENT_MAX);
+    paths = dedupe_recent_paths_preserve_order(paths);
+    save_recent(&state, paths)?;
+
+    Ok(new_s)
+}
+
+/// Deletes the project directory from disk, removes it from recents, and clears the open project when it matches.
+#[tauri::command]
+pub fn delete_project(state: tauri::State<'_, AppState>, path: String) -> Result<(), String> {
+    let target = PathBuf::from(path.trim());
+    let canon = target
+        .canonicalize()
+        .map_err(|e| format!("invalid project path: {e}"))?;
+    if !canon.is_dir() {
+        return Err("project path must be a directory".into());
+    }
+    if !canon.join(MAIN_TYP).is_file() {
+        return Err(format!(
+            "cannot delete: missing {MAIN_TYP} in the project root"
+        ));
+    }
+
+    let open_matches = {
+        let g = state.project_root.lock().map_err(|e| e.to_string())?;
+        match g.as_ref() {
+            Some(r) => r
+                .canonicalize()
+                .ok()
+                .as_ref()
+                .is_some_and(|c| c == &canon),
+            None => false,
+        }
+    };
+
+    let canon_s = canon.to_string_lossy().to_string();
+    let mut paths = load_recent(&state);
+    paths.retain(|p| {
+        if p == &canon_s {
+            return false;
+        }
+        match PathBuf::from(p.as_str()).canonicalize() {
+            Ok(c) => c != canon,
+            Err(_) => true,
+        }
+    });
+    paths = dedupe_recent_paths_preserve_order(paths);
+
+    if open_matches {
+        shutdown_open_project(&state)?;
+    }
+
+    fs::remove_dir_all(&canon).map_err(|e| e.to_string())?;
+
+    save_recent(&state, paths)?;
+    crate::project::history::remove_store_entry_for_root(&state, &canon)?;
+
+    Ok(())
 }
 
