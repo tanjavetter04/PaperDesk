@@ -65,6 +65,19 @@
       !entries.find((e) => e.path === selectedFilePath && e.isDir),
   );
 
+  const moveButtonTooltip = $derived.by(() => {
+    if (!selectedFilePath) {
+      return "Keine Datei ausgewählt.";
+    }
+    if (selectedFilePath === "main.typ") {
+      return "main.typ kann nicht verschoben werden.";
+    }
+    if (entries.find((e) => e.path === selectedFilePath && e.isDir)) {
+      return "Ordner können hier nicht verschoben werden.";
+    }
+    return "Ausgewählte Datei verschieben";
+  });
+
   function openMoveDialog() {
     moveDestDir = targetDirPath;
     moveOpen = true;
@@ -82,13 +95,15 @@
     <span class="tree-actions">
       <button type="button" class="icon-btn" title="Neue Datei" onclick={() => onNewFile()}>+</button>
       <button type="button" class="icon-btn" title="Neuer Ordner" onclick={() => onNewFolder()}>⊕</button>
-      <button
-        type="button"
-        class="icon-btn"
-        title="Ausgewählte Datei verschieben"
-        disabled={!canMoveSelection}
-        onclick={openMoveDialog}
-      >↗</button>
+      <span class="move-wrap" title={moveButtonTooltip}>
+        <button
+          type="button"
+          class="icon-btn"
+          title={moveButtonTooltip}
+          disabled={!canMoveSelection}
+          onclick={openMoveDialog}
+        >↗</button>
+      </span>
     </span>
   </div>
   {#if targetDirPath}
@@ -240,6 +255,20 @@
   .icon-btn:disabled {
     opacity: 0.35;
     cursor: default;
+  }
+
+  /* Damit das title-Tooltip auch bei disabled zuverlässig erscheint (Hover trifft den Wrapper). */
+  .move-wrap {
+    display: inline-flex;
+    vertical-align: top;
+  }
+
+  .move-wrap:has(.icon-btn:disabled) {
+    cursor: help;
+  }
+
+  .move-wrap .icon-btn:disabled {
+    pointer-events: none;
   }
 
   .target-hint {
