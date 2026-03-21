@@ -721,6 +721,7 @@
       historyPromptEnableOpen = true;
       return;
     }
+    aiPanelOpen = false;
     historyPanelOpen = true;
     await refreshHistoryCommits();
   }
@@ -735,7 +736,13 @@
   }
 
   function toggleAiPanel() {
-    aiPanelOpen = !aiPanelOpen;
+    if (aiPanelOpen) {
+      aiPanelOpen = false;
+      return;
+    }
+    historyPanelOpen = false;
+    historyDiffOpen = false;
+    aiPanelOpen = true;
   }
 
   async function handleHistorySnapshot() {

@@ -172,18 +172,13 @@
 </script>
 
 {#if open}
-  <div
-    class="backdrop"
-    role="presentation"
-    onclick={(e) => e.target === e.currentTarget && onClose()}
-  ></div>
   {#key locale.value}
     <div
       class="panel"
       class:resizing
       style:--panel-w="{panelWidthPx}px"
       role="dialog"
-      aria-modal="true"
+      aria-modal="false"
       aria-labelledby="hist-title"
     >
       <div
@@ -270,7 +265,7 @@
 
 {#if diffOpen}
   <div
-    class="backdrop diff-backdrop"
+    class="diff-backdrop"
     role="presentation"
     onclick={(e) => e.target === e.currentTarget && onCloseDiff()}
   ></div>
@@ -349,14 +344,11 @@
 {/if}
 
 <style>
-  .backdrop {
+  /* Fullscreen dimming only for the diff overlay; main history pane floats like the AI chat. */
+  .diff-backdrop {
     position: fixed;
     inset: 0;
     background: rgb(0 0 0 / 0.45);
-    z-index: 110;
-  }
-
-  .diff-backdrop {
     z-index: 125;
   }
 
@@ -368,14 +360,16 @@
     left: auto;
     width: min(var(--panel-w, 440px), calc(100vw - 2rem));
     min-width: min(240px, calc(100vw - 2rem));
-    z-index: 115;
+    z-index: 118;
     display: flex;
     flex-direction: column;
     border-radius: 10px;
     border: 1px solid var(--pd-border);
     background: var(--pd-surface);
     color: var(--pd-text);
-    box-shadow: 0 12px 40px rgb(0 0 0 / 0.35);
+    box-shadow:
+      0 0 0 1px rgb(0 0 0 / 0.06),
+      0 16px 48px rgb(0 0 0 / 0.28);
     min-height: 0;
   }
 
