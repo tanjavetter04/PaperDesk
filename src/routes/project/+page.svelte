@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount, tick } from "svelte";
+  import { listen } from "@tauri-apps/api/event";
   import { goto } from "$app/navigation";
   import FileTree from "$lib/components/FileTree.svelte";
   import EditorPane from "$lib/components/EditorPane.svelte";
@@ -15,7 +16,11 @@
     startTinymistPreview,
     restartTinymistPreview,
   } from "$lib/tauri/api";
-  import type { CompileDiagnostic, PreviewSource } from "$lib/tauri/api";
+  import type {
+    CompileDiagnostic,
+    PreviewScrollToSource,
+    PreviewSource,
+  } from "$lib/tauri/api";
 
   let rootPath = $state<string | null>(null);
   let files = $state<string[]>([]);
@@ -30,6 +35,8 @@
   });
   let previewUrl = $state<string | null>(null);
   let previewError = $state<string | null>(null);
+  let previewScroll = $state({ tick: 0, line0: 0, column0: 0 });
+  let pendingPreviewJump = $state<PreviewScrollToSource | null>(null);
 
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
   let diagnosticsTimer: ReturnType<typeof setTimeout> | null = null;
@@ -115,7 +122,45 @@
     }
   }
 
+  function pathUnderProjectRoot(absPath: string, root: string): string | null {
+    const a = absPath.replace(/\\/g, "/");
+    const r = root.replace(/\\/g, "/").replace(/\/+$/, "");
+    if (a === r) return "";
+    const prefix = r + "/";
+    if (!a.startsWith(prefix)) return null;
+    return a.slice(prefix.length);
+  }
+
+  function firePreviewScroll(line0: number, column0: number) {
+    previewScroll = {
+      tick: previewScroll.tick + 1,
+      line0,
+      column0,
+    };
+  }
+
+  async function handlePreviewScrollToSource(p: PreviewScrollToSource) {
+    const root = rootPath;
+    if (!root) return;
+    const rel = pathUnderProjectRoot(p.filepath, root);
+    if (rel == null || rel === "") return;
+
+    if (rel !== selectedPath) {
+      pendingPreviewJump = p;
+      await selectFile(rel);
+      return;
+    }
+    firePreviewScroll(p.line0, p.column0);
+  }
+
   onMount(() => {
+    let unlistenPreview: (() => void) | undefined;
+    void listen<PreviewScrollToSource>("preview-scroll-to-source", (e) => {
+      void handlePreviewScrollToSource(e.payload);
+    }).then((fn) => {
+      unlistenPreview = fn;
+    });
+
     if (typeof localStorage !== "undefined") {
       const raw = localStorage.getItem(PREVIEW_WIDTH_STORAGE);
       if (raw) {
@@ -135,7 +180,10 @@
     void tick().then(() => {
       previewWidthPx = clampPreviewWidth(previewWidthPx);
     });
-    return () => window.removeEventListener("resize", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      unlistenPreview?.();
+    };
   });
 
   async function refreshFiles() {
@@ -329,6 +377,15 @@
     if (loadedPath.endsWith(".typ")) {
       void refreshDiagnostics();
     }
+    const pend = pendingPreviewJump;
+    const root = rootPath;
+    if (pend && root) {
+      const r = pathUnderProjectRoot(pend.filepath, root);
+      if (r === loadedPath) {
+        pendingPreviewJump = null;
+        firePreviewScroll(pend.line0, pend.column0);
+      }
+    }
   }
 
   function jumpToDiagnosticInEditor(d: CompileDiagnostic) {
@@ -367,6 +424,7 @@
         onReady={onEditorReady}
         compileDiagnostics={diagnostics}
         focusDiagnosticRequest={diagnosticFocus}
+        {previewScroll}
       />
       <DiagnosticsPanel {diagnostics} onJumpTo={jumpToDiagnosticInEditor} />
     </section>

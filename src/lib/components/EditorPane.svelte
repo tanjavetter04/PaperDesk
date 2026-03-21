@@ -23,6 +23,7 @@
     compileDiagnosticCursorPos,
     compileDiagnosticsToCm,
   } from "$lib/editor/compileDiagnosticsCm";
+  import { cursorPosFromTinymistEditorScroll } from "$lib/editor/sourceScrollCm";
 
   let {
     path,
@@ -31,6 +32,7 @@
     onCursorActivity,
     compileDiagnostics = [],
     focusDiagnosticRequest,
+    previewScroll,
   }: {
     path: string | null;
     onDocumentChange: (text: string) => void;
@@ -40,6 +42,8 @@
     onCursorActivity?: (utf8ByteOffset: number) => void;
     compileDiagnostics?: CompileDiagnostic[];
     focusDiagnosticRequest?: { tick: number; target: CompileDiagnostic | null };
+    /** Live-preview click → source (0-based line/column from tinymist). */
+    previewScroll?: { tick: number; line0: number; column0: number };
   } = $props();
 
   let host = $state<HTMLDivElement | null>(null);
@@ -134,6 +138,20 @@
     };
     if (!v || tick === 0 || !target || !p?.endsWith(".typ")) return;
     const pos = compileDiagnosticCursorPos(v.state.doc, p, target);
+    if (pos == null) return;
+    v.focus();
+    v.dispatch({
+      selection: EditorSelection.cursor(pos),
+      effects: EditorView.scrollIntoView(pos, { y: "center" }),
+    });
+  });
+
+  $effect(() => {
+    const v = view;
+    const p = path;
+    const ps = previewScroll;
+    if (!v || !ps || ps.tick === 0 || !p?.endsWith(".typ")) return;
+    const pos = cursorPosFromTinymistEditorScroll(v.state.doc, ps.line0, ps.column0);
     if (pos == null) return;
     v.focus();
     v.dispatch({

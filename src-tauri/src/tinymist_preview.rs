@@ -6,6 +6,9 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
+use tauri::Emitter;
+use tungstenite::Message;
+
 use crate::project::paths::join_under_root;
 use crate::AppState;
 
@@ -15,6 +18,7 @@ struct PaperDeskMeta {
 }
 
 const DATA_PLANE_PREFIX: &str = "Data plane server listening on: ";
+const CONTROL_PANEL_PREFIX: &str = "Control panel server listening on: ";
 
 fn resolve_entry(root: &std::path::Path, entry: Option<String>) -> String {
     if let Some(entry) = entry {
@@ -58,35 +62,133 @@ fn parse_data_plane_url(line: &str) -> Option<String> {
     Some(format!("http://{host}/"))
 }
 
+fn parse_control_plane_ws_url(line: &str) -> Option<String> {
+    let idx = line.find(CONTROL_PANEL_PREFIX)?;
+    let host = line[idx + CONTROL_PANEL_PREFIX.len()..].trim();
+    if host.is_empty() {
+        return None;
+    }
+    Some(format!("ws://{host}/"))
+}
+
+#[derive(Clone, serde::Serialize)]
+struct PreviewScrollToSource {
+    filepath: String,
+    line0: u32,
+    column0: u32,
+}
+
+fn parse_editor_scroll_payload(txt: &str) -> Option<PreviewScrollToSource> {
+    let v: serde_json::Value = serde_json::from_str(txt).ok()?;
+    if v.get("event").and_then(|x| x.as_str())? != "editorScrollTo" {
+        return None;
+    }
+    let filepath = v.get("filepath").and_then(|x| x.as_str())?.to_string();
+    let (line0, column0) = match v.get("start") {
+        Some(serde_json::Value::Array(a)) if a.len() >= 2 => {
+            let l = a.first()?.as_u64()? as u32;
+            let c = a.get(1)?.as_u64()? as u32;
+            (l, c)
+        }
+        _ => (0, 0),
+    };
+    Some(PreviewScrollToSource {
+        filepath,
+        line0,
+        column0,
+    })
+}
+
+fn spawn_control_plane_listener(app: tauri::AppHandle, ws_url: String) -> thread::JoinHandle<()> {
+    thread::spawn(move || {
+        let Ok((mut socket, _)) = tungstenite::connect(ws_url.as_str()) else {
+            return;
+        };
+        loop {
+            match socket.read() {
+                Ok(Message::Text(t)) => {
+                    if let Some(p) = parse_editor_scroll_payload(&t) {
+                        let _ = app.emit("preview-scroll-to-source", p);
+                    }
+                }
+                Ok(Message::Ping(p)) => {
+                    let _ = socket.send(Message::Pong(p));
+                }
+                Ok(Message::Close(_)) | Err(_) => break,
+                _ => {}
+            }
+        }
+    })
+}
+
 /// Kill any running preview process and clear state.
 pub fn stop(state: &AppState) -> Result<(), String> {
     let mut slot = state.tinymist.lock().map_err(|e| e.to_string())?;
     if let Some(mut session) = slot.take() {
+        if let Some(h) = session.control_plane_listener.take() {
+            let _ = h.join();
+        }
         let _ = session.child.kill();
         let _ = session.child.wait();
     }
     Ok(())
 }
 
-fn spawn_reader_thread(
+fn spawn_stderr_reader(
     stderr: std::process::ChildStderr,
-    tx: mpsc::Sender<Result<String, String>>,
+    tx: mpsc::Sender<Result<(String, Option<String>), String>>,
 ) {
     thread::spawn(move || {
-        let reader = BufReader::new(stderr);
+        let mut reader = BufReader::new(stderr);
+        let mut line = String::new();
+        let mut preview_url: Option<String> = None;
+        let mut control_ws: Option<String> = None;
         let mut sent = false;
-        for line in reader.lines().map_while(Result::ok) {
-            if !sent {
-                if let Some(url) = parse_data_plane_url(&line) {
-                    sent = true;
-                    let _ = tx.send(Ok(url));
+
+        loop {
+            line.clear();
+            match reader.read_line(&mut line) {
+                Ok(0) => break,
+                Ok(_) => {
+                    let t = line.trim_end();
+                    if preview_url.is_none() {
+                        preview_url = parse_data_plane_url(t);
+                    }
+                    if control_ws.is_none() {
+                        control_ws = parse_control_plane_ws_url(t);
+                    }
+                    if preview_url.is_some() && control_ws.is_some() {
+                        let _ = tx.send(Ok((
+                            preview_url.clone().unwrap(),
+                            control_ws.clone(),
+                        )));
+                        sent = true;
+                        break;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+
+        if !sent {
+            match preview_url {
+                Some(p) => {
+                    let _ = tx.send(Ok((p, control_ws)));
+                }
+                None => {
+                    let _ = tx.send(Err(
+                        "tinymist ended before the preview server started (is tinymist installed?)"
+                            .into(),
+                    ));
                 }
             }
         }
-        if !sent {
-            let _ = tx.send(Err(
-                "tinymist ended before the preview server started (is tinymist installed?)".into(),
-            ));
+
+        loop {
+            line.clear();
+            if reader.read_line(&mut line).unwrap_or(0) == 0 {
+                break;
+            }
         }
     });
 }
@@ -96,10 +198,15 @@ pub struct TinymistSession {
     pub preview_url: String,
     pub root: PathBuf,
     pub entry_rel: String,
+    control_plane_listener: Option<thread::JoinHandle<()>>,
 }
 
 /// Start tinymist preview for the open project, or return the existing session URL if unchanged.
-pub fn ensure_running(state: &AppState, entry: Option<String>) -> Result<String, String> {
+pub fn ensure_running(
+    app: &tauri::AppHandle,
+    state: &AppState,
+    entry: Option<String>,
+) -> Result<String, String> {
     let root = state
         .project_root
         .lock()
@@ -161,10 +268,10 @@ pub fn ensure_running(state: &AppState, entry: Option<String>) -> Result<String,
 
     let stderr = child.stderr.take().ok_or("tinymist: no stderr pipe")?;
     let (tx, rx) = mpsc::channel();
-    spawn_reader_thread(stderr, tx);
+    spawn_stderr_reader(stderr, tx);
 
-    let preview_url = match rx.recv_timeout(Duration::from_secs(45)) {
-        Ok(Ok(url)) => url,
+    let (preview_url, control_ws) = match rx.recv_timeout(Duration::from_secs(45)) {
+        Ok(Ok(pair)) => pair,
         Ok(Err(msg)) => {
             let _ = child.kill();
             let _ = child.wait();
@@ -177,11 +284,17 @@ pub fn ensure_running(state: &AppState, entry: Option<String>) -> Result<String,
         }
     };
 
+    let app_handle = app.clone();
+    let control_plane_listener = control_ws
+        .filter(|s| !s.is_empty())
+        .map(|ws| spawn_control_plane_listener(app_handle, ws));
+
     *state.tinymist.lock().map_err(|e| e.to_string())? = Some(TinymistSession {
         child,
         preview_url: preview_url.clone(),
         root,
         entry_rel: rel,
+        control_plane_listener,
     });
 
     Ok(preview_url)
@@ -189,17 +302,19 @@ pub fn ensure_running(state: &AppState, entry: Option<String>) -> Result<String,
 
 #[tauri::command]
 pub fn start_tinymist_preview(
+    app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
     entry: Option<String>,
 ) -> Result<String, String> {
-    ensure_running(&state, entry)
+    ensure_running(&app, &state, entry)
 }
 
 #[tauri::command]
 pub fn restart_tinymist_preview(
+    app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
     entry: Option<String>,
 ) -> Result<String, String> {
     stop(&state)?;
-    ensure_running(&state, entry)
+    ensure_running(&app, &state, entry)
 }

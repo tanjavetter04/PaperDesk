@@ -16,6 +16,13 @@ export type CompileOutcome = {
   preview_page: number | null;
 };
 
+/** Emitted by the backend when tinymist preview reports `editorScrollTo` (click in live preview). */
+export type PreviewScrollToSource = {
+  filepath: string;
+  line0: number;
+  column0: number;
+};
+
 export async function getRecentProjects(): Promise<string[]> {
   return invoke("get_recent_projects");
 }
