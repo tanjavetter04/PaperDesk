@@ -8,8 +8,10 @@
   import DiagnosticsPanel from "$lib/components/DiagnosticsPanel.svelte";
   import {
     getOpenProject,
-    listProjectFiles,
+    listProjectEntries,
     writeTextFile,
+    createProjectDir,
+    moveProjectPath,
     compileProject,
     exportPdf,
     closeProject,
@@ -20,10 +22,13 @@
     CompileDiagnostic,
     PreviewScrollToSource,
     PreviewSource,
+    ProjectEntry,
   } from "$lib/tauri/api";
 
   let rootPath = $state<string | null>(null);
-  let files = $state<string[]>([]);
+  let projectEntries = $state<ProjectEntry[]>([]);
+  /** Sidebar: folder for “new file / new folder” (`""` = root). */
+  let treeTargetDir = $state("");
   let selectedPath = $state<string | null>(null);
   let buffer = $state("");
   let saveLabel = $state<"saved" | "dirty" | "saving">("saved");
@@ -186,15 +191,112 @@
     };
   });
 
+  function projectFilePaths(): string[] {
+    return projectEntries.filter((e) => !e.isDir).map((e) => e.path);
+  }
+
   async function refreshFiles() {
     try {
-      files = await listProjectFiles();
+      projectEntries = await listProjectEntries();
+      const files = projectFilePaths();
       if (files.length && !selectedPath) {
-        const main = files.find((f) => f === "main.typ") ?? files[0];
-        selectedPath = main;
+        selectedPath = files.find((f) => f === "main.typ") ?? files[0] ?? null;
+      }
+      if (selectedPath && !files.includes(selectedPath)) {
+        selectedPath = files.find((f) => f === "main.typ") ?? files[0] ?? null;
+        editorBufferPath = null;
       }
     } catch {
-      files = [];
+      projectEntries = [];
+    }
+  }
+
+  function safeTreeBasename(name: string): string | null {
+    const t = name.trim().replace(/\\/g, "/");
+    if (!t || t.includes("..") || t.includes("/")) return null;
+    return t;
+  }
+
+  function parentDirOfRel(path: string): string {
+    const i = path.lastIndexOf("/");
+    return i === -1 ? "" : path.slice(0, i);
+  }
+
+  async function handleNewFile() {
+    const raw =
+      typeof window !== "undefined"
+        ? window.prompt("Dateiname (z. B. chapter.typ)", "chapter.typ")
+        : null;
+    if (raw == null) return;
+    const base = safeTreeBasename(raw);
+    if (!base) {
+      window.alert("Ungültiger Name (keine Schrägstriche oder ..).");
+      return;
+    }
+    const rel = treeTargetDir ? `${treeTargetDir}/${base}` : base;
+    if (projectEntries.some((e) => e.path === rel)) {
+      window.alert("Dieser Pfad existiert bereits.");
+      return;
+    }
+    try {
+      await writeTextFile(rel, "");
+      await refreshFiles();
+      await selectFile(rel);
+    } catch (e) {
+      window.alert(String(e));
+    }
+  }
+
+  async function handleNewFolder() {
+    const raw =
+      typeof window !== "undefined"
+        ? window.prompt("Ordnername", "sections")
+        : null;
+    if (raw == null) return;
+    const base = safeTreeBasename(raw);
+    if (!base) {
+      window.alert("Ungültiger Name (keine Schrägstriche oder ..).");
+      return;
+    }
+    const rel = treeTargetDir ? `${treeTargetDir}/${base}` : base;
+    if (projectEntries.some((e) => e.path === rel)) {
+      window.alert("Dieser Pfad existiert bereits.");
+      return;
+    }
+    try {
+      await createProjectDir(rel);
+      await refreshFiles();
+      treeTargetDir = rel;
+    } catch (e) {
+      window.alert(String(e));
+    }
+  }
+
+  async function handleMoveFile(destinationDir: string) {
+    const from = selectedPath;
+    if (!from || from === "main.typ") return;
+    const slash = from.lastIndexOf("/");
+    const base = slash === -1 ? from : from.slice(slash + 1);
+    const dest = destinationDir.replace(/\/+$/, "");
+    const to = dest === "" ? base : `${dest}/${base}`;
+    if (to === from) return;
+    if (projectEntries.some((e) => e.path === to)) {
+      window.alert("Ziel existiert bereits.");
+      return;
+    }
+    try {
+      if (saveTimer) {
+        clearTimeout(saveTimer);
+        saveTimer = null;
+      }
+      await persistFile(from, buffer);
+      await moveProjectPath(from, to);
+      await refreshFiles();
+      selectedPath = to;
+      editorBufferPath = null;
+      treeTargetDir = parentDirOfRel(to);
+    } catch (e) {
+      window.alert(String(e));
     }
   }
 
@@ -286,7 +388,7 @@
     const pathWhenStarted = selectedPath;
     const source = previewSourceForCompile();
     try {
-      const r = await compileProject(null, source);
+      const r = await compileProject(source);
       if (selectedPath !== pathWhenStarted) return;
       diagnostics = r.diagnostics;
     } catch (e) {
@@ -324,6 +426,7 @@
       }
     }
     selectedPath = p;
+    treeTargetDir = parentDirOfRel(p);
     editorBufferPath = null;
     diagnostics = [];
   }
@@ -411,7 +514,18 @@
     style:grid-template-columns={mainGridColumns}
   >
     <aside class="side">
-      <FileTree {files} {selectedPath} onSelect={selectFile} />
+      <FileTree
+        entries={projectEntries}
+        selectedFilePath={selectedPath}
+        targetDirPath={treeTargetDir}
+        onSelectFile={selectFile}
+        onTargetDirChange={(d) => {
+          treeTargetDir = d;
+        }}
+        onNewFile={handleNewFile}
+        onNewFolder={handleNewFolder}
+        onMoveFile={handleMoveFile}
+      />
     </aside>
     <section class="center">
       <EditorPane

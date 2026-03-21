@@ -52,8 +52,21 @@ export async function pickProjectFolder(): Promise<string | null> {
   });
 }
 
-export async function listProjectFiles(): Promise<string[]> {
+export type ProjectEntry = {
+  path: string;
+  isDir: boolean;
+};
+
+export async function listProjectEntries(): Promise<ProjectEntry[]> {
   return invoke("list_project_files");
+}
+
+export async function createProjectDir(relativePath: string): Promise<void> {
+  return invoke("create_project_dir", { relativePath });
+}
+
+export async function moveProjectPath(from: string, to: string): Promise<void> {
+  return invoke("move_project_path", { from, to });
 }
 
 export async function readTextFile(relativePath: string): Promise<string> {

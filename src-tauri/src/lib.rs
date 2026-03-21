@@ -9,7 +9,9 @@ use std::sync::Mutex;
 use tauri::Manager;
 
 use commands::compile_cmd::{compile_project, compile_project_at_path, export_pdf_to_path};
-use commands::fs::{list_project_files, read_text_file, write_text_file};
+use commands::fs::{
+    create_project_dir, list_project_files, move_project_path, read_text_file, write_text_file,
+};
 use commands::project::{
     add_recent_project, close_project, create_empty_project, create_from_template, get_open_project,
     get_recent_projects, open_project,
@@ -78,6 +80,8 @@ pub fn run() {
             get_open_project,
             close_project,
             list_project_files,
+            create_project_dir,
+            move_project_path,
             read_text_file,
             write_text_file,
             compile_project,
