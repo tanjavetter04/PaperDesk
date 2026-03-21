@@ -159,7 +159,7 @@
     };
   }
 
-  async function handlePreviewScrollToSource(p: PreviewScrollToSource) {
+  function handlePreviewScrollToSource(p: PreviewScrollToSource) {
     const root = rootPath;
     if (!root) return;
     const rel = pathUnderProjectRoot(p.filepath, root);
@@ -167,7 +167,7 @@
 
     if (rel !== selectedPath) {
       pendingPreviewJump = p;
-      await selectFile(rel);
+      selectFile(rel);
       return;
     }
     firePreviewScroll(p.line0, p.column0);
@@ -176,7 +176,7 @@
   onMount(() => {
     let unlistenPreview: (() => void) | undefined;
     void listen<PreviewScrollToSource>("preview-scroll-to-source", (e) => {
-      void handlePreviewScrollToSource(e.payload);
+      handlePreviewScrollToSource(e.payload);
     }).then((fn) => {
       unlistenPreview = fn;
     });
@@ -245,6 +245,50 @@
     }
   }
 
+  /** Merge project entries by path (for local tree updates without a full listing). */
+  function upsertProjectEntries(
+    entries: ProjectEntry[],
+    ...added: ProjectEntry[]
+  ): ProjectEntry[] {
+    const m = new Map(entries.map((e) => [e.path, e]));
+    for (const e of added) {
+      m.set(e.path, e);
+    }
+    return [...m.values()].sort((a, b) =>
+      a.path.localeCompare(b.path, undefined, { sensitivity: "base" }),
+    );
+  }
+
+  function entriesForNewFile(rel: string): ProjectEntry[] {
+    const parts = rel.split("/").filter(Boolean);
+    const out: ProjectEntry[] = [];
+    for (let i = 0; i < parts.length - 1; i++) {
+      out.push({
+        path: parts.slice(0, i + 1).join("/"),
+        isDir: true,
+      });
+    }
+    out.push({ path: rel, isDir: false });
+    return out;
+  }
+
+  function entriesForNewFolder(rel: string): ProjectEntry[] {
+    const parts = rel.split("/").filter(Boolean);
+    const out: ProjectEntry[] = [];
+    for (let i = 0; i < parts.length; i++) {
+      out.push({
+        path: parts.slice(0, i + 1).join("/"),
+        isDir: true,
+      });
+    }
+    return out;
+  }
+
+  function entriesAfterMove(from: string, to: string): ProjectEntry[] {
+    const filtered = projectEntries.filter((e) => e.path !== from);
+    return upsertProjectEntries(filtered, ...entriesForNewFile(to));
+  }
+
   function safeTreeBasename(name: string): string | null {
     const t = name.trim().replace(/\\/g, "/");
     if (!t || t.includes("..") || t.includes("/")) return null;
@@ -299,8 +343,8 @@
     }
     try {
       await writeTextFile(rel, "");
-      await refreshFiles();
-      await selectFile(rel);
+      projectEntries = upsertProjectEntries(projectEntries, ...entriesForNewFile(rel));
+      selectFile(rel);
     } catch (e) {
       showMessage(formatUserError(e));
     }
@@ -320,7 +364,10 @@
     }
     try {
       await createProjectDir(rel);
-      await refreshFiles();
+      projectEntries = upsertProjectEntries(
+        projectEntries,
+        ...entriesForNewFolder(rel),
+      );
       treeTargetDir = rel;
     } catch (e) {
       showMessage(formatUserError(e));
@@ -346,7 +393,7 @@
       }
       await persistFile(from, buffer);
       await moveProjectPath(from, to);
-      await refreshFiles();
+      projectEntries = entriesAfterMove(from, to);
       selectedPath = to;
       editorBufferPath = null;
       treeTargetDir = parentDirOfRel(to);
@@ -365,8 +412,7 @@
         return;
       }
       rootPath = open;
-      await refreshFiles();
-      await ensurePreview();
+      await Promise.all([refreshFiles(), ensurePreview()]);
     })();
     return () => {
       gone = true;
@@ -403,6 +449,11 @@
     saveLabel = "saving";
     await writeTextFile(path, text);
     saveLabel = "saved";
+  }
+
+  /** Write without updating UI; used when switching files so the tab change is not blocked. */
+  async function flushPathToDisk(path: string, text: string): Promise<void> {
+    await writeTextFile(path, text);
   }
 
   function scheduleSave() {
@@ -466,24 +517,30 @@
     scheduleDiagnosticsRefresh();
   }
 
-  async function selectFile(p: string) {
+  function selectFile(p: string) {
     if (p === selectedPath) return;
-    if (saveTimer) clearTimeout(saveTimer);
+    if (saveTimer) {
+      clearTimeout(saveTimer);
+      saveTimer = null;
+    }
     if (diagnosticsTimer) {
       clearTimeout(diagnosticsTimer);
       diagnosticsTimer = null;
     }
-    if (selectedPath) {
-      try {
-        await persistFile(selectedPath, buffer);
-      } catch {
-        saveLabel = "dirty";
-      }
+    const prevPath = selectedPath;
+    const prevBuffer = buffer;
+    if (prevPath) {
+      void flushPathToDisk(prevPath, prevBuffer).catch(() => {
+        showMessage(
+          `Speichern von „${prevPath}“ ist fehlgeschlagen. Inhalt war nur im Speicher.`,
+        );
+      });
     }
     selectedPath = p;
     treeTargetDir = parentDirOfRel(p);
     editorBufferPath = null;
     diagnostics = [];
+    saveLabel = "saved";
   }
 
   async function goHub() {
@@ -529,7 +586,7 @@
     buffer = text;
     editorBufferPath = loadedPath;
     if (loadedPath.endsWith(".typ")) {
-      void refreshDiagnostics();
+      scheduleDiagnosticsRefresh();
     }
     const pend = pendingPreviewJump;
     const root = rootPath;

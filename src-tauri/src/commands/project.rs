@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use tauri::Manager;
 
 use crate::project::paths::MAIN_TYP;
+use crate::tinymist_preview;
 use crate::AppState;
 
 const RECENT_MAX: usize = 12;
@@ -84,6 +85,7 @@ pub fn get_open_project(state: tauri::State<'_, AppState>) -> Result<Option<Stri
 
 #[tauri::command]
 pub fn close_project(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    tinymist_preview::stop(&state)?;
     *state.project_root.lock().map_err(|e| e.to_string())? = None;
     Ok(())
 }

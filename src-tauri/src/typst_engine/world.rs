@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::{fmt, fs, io, mem};
 
 use chrono::{Datelike, FixedOffset, Local, Utc};
@@ -20,6 +20,47 @@ use typst_timing::timed;
 
 use super::noop_progress::NoopProgress;
 
+/// Shared result of a font scan (system + embedded + configured dirs). Cached per distinct dir set.
+struct FontBundle {
+    book: FontBook,
+    slots: Vec<FontSlot>,
+}
+
+/// Normalized key for font cache (canonical paths, sorted).
+#[derive(Clone, Hash, PartialEq, Eq)]
+struct FontDirsKey {
+    dirs: Vec<PathBuf>,
+}
+
+fn font_dirs_cache_key(font_dirs: &[PathBuf]) -> FontDirsKey {
+    let mut dirs: Vec<PathBuf> = font_dirs
+        .iter()
+        .filter_map(|p| p.canonicalize().ok())
+        .collect();
+    dirs.sort();
+    FontDirsKey { dirs }
+}
+
+fn shared_font_bundle(font_dirs: Vec<PathBuf>) -> Arc<FontBundle> {
+    static CACHE: Mutex<Option<HashMap<FontDirsKey, Arc<FontBundle>>>> = Mutex::new(None);
+
+    let key = font_dirs_cache_key(&font_dirs);
+    let mut guard = CACHE.lock().unwrap_or_else(|e| e.into_inner());
+    let map = guard.get_or_insert_with(HashMap::new);
+    if let Some(arc) = map.get(&key) {
+        return Arc::clone(arc);
+    }
+    let mut searcher = Fonts::searcher();
+    searcher.include_system_fonts(true);
+    let fonts = searcher.search_with(font_dirs);
+    let bundle = Arc::new(FontBundle {
+        book: fonts.book,
+        slots: fonts.fonts,
+    });
+    map.insert(key, Arc::clone(&bundle));
+    bundle
+}
+
 /// A world that reads sources only from a fixed project root on disk.
 pub struct PaperDeskWorld {
     workdir: Option<PathBuf>,
@@ -29,7 +70,8 @@ pub struct PaperDeskWorld {
     source_overrides: HashMap<FileId, EcoString>,
     library: LazyHash<Library>,
     book: LazyHash<FontBook>,
-    fonts: Vec<FontSlot>,
+    /// Font scan shared across worlds with the same extra font directories (avoids rescanning system fonts every compile).
+    font_bundle: Arc<FontBundle>,
     slots: Mutex<HashMap<FileId, FileSlot>>,
     package_storage: PackageStorage,
     now: Now,
@@ -91,9 +133,7 @@ impl PaperDeskWorld {
             }
         }
 
-        let mut fonts = Fonts::searcher();
-        fonts.include_system_fonts(true);
-        let fonts = fonts.search_with(font_dirs);
+        let font_bundle = shared_font_bundle(font_dirs);
 
         let downloader = Downloader::new(concat!("paperdesk/", env!("CARGO_PKG_VERSION")));
         let package_storage = PackageStorage::new(Some(package_cache), None, downloader);
@@ -104,8 +144,8 @@ impl PaperDeskWorld {
             main,
             source_overrides: overrides,
             library: LazyHash::new(library),
-            book: LazyHash::new(fonts.book),
-            fonts: fonts.fonts,
+            book: LazyHash::new(font_bundle.book.clone()),
+            font_bundle,
             slots: Mutex::new(HashMap::new()),
             package_storage,
             now: Now::System(OnceLock::new()),
@@ -176,7 +216,7 @@ impl World for PaperDeskWorld {
     }
 
     fn font(&self, index: usize) -> Option<Font> {
-        self.fonts.get(index)?.get()
+        self.font_bundle.slots.get(index)?.get()
     }
 
     fn today(&self, offset: Option<i64>) -> Option<Datetime> {

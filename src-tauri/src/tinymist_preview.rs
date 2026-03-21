@@ -162,14 +162,18 @@ fn spawn_control_plane_listener(app: tauri::AppHandle, ws_url: String) -> thread
 }
 
 /// Kill any running preview process and clear state.
+///
+/// Kill the tinymist child **before** joining the control-plane listener thread. Joining first
+/// could deadlock: the listener blocks on `socket.read()` until the server closes the connection.
 pub fn stop(state: &AppState) -> Result<(), String> {
     let mut slot = state.tinymist.lock().map_err(|e| e.to_string())?;
     if let Some(mut session) = slot.take() {
-        if let Some(h) = session.control_plane_listener.take() {
-            let _ = h.join();
-        }
+        let listener = session.control_plane_listener.take();
         let _ = session.child.kill();
         let _ = session.child.wait();
+        if let Some(h) = listener {
+            let _ = h.join();
+        }
     }
     Ok(())
 }
