@@ -133,6 +133,19 @@ export async function restartTinymistPreview(): Promise<string> {
   return invoke("restart_tinymist_preview");
 }
 
+/** Tell tinymist to scroll the live preview to match the editor caret (`panelScrollTo`). */
+export async function tinymistPanelScrollToSource(
+  relativePath: string,
+  line0: number,
+  character: number,
+): Promise<void> {
+  return invoke("tinymist_panel_scroll_to_source", {
+    relativePath,
+    line0,
+    character,
+  });
+}
+
 /** Compile project at `projectPath` without switching the open project (e.g. hub previews). */
 export async function compileProjectAtPath(
   projectPath: string,

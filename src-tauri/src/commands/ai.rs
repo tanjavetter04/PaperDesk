@@ -178,6 +178,32 @@ struct OpenAiErrorDetail {
     message: Option<String>,
 }
 
+/// Stable prefixes for UI mapping (`AiAssistantPanel.mapInvokeError`).
+fn openai_http_error_message(status: reqwest::StatusCode, text: &str) -> String {
+    let trimmed = text.trim();
+    if let Ok(err) = serde_json::from_str::<OpenAiErrorBody>(trimmed) {
+        if let Some(msg) = err.error.and_then(|e| e.message) {
+            let m = msg.trim();
+            if !m.is_empty() {
+                return format!("API error ({status}): {m}");
+            }
+        }
+    }
+    let head = trimmed.trim_start();
+    if head.starts_with('<') {
+        return format!("api_html_response:{status}");
+    }
+    if status.is_server_error() {
+        return format!("api_server_error:{status}");
+    }
+    let preview: String = trimmed.chars().take(160).collect();
+    if preview.is_empty() {
+        format!("API error ({status})")
+    } else {
+        format!("API error ({status}): {preview}")
+    }
+}
+
 #[tauri::command]
 pub async fn ai_chat(
     state: tauri::State<'_, AppState>,
@@ -231,13 +257,7 @@ pub async fn ai_chat(
     let text = res.text().await.map_err(|e| e.to_string())?;
 
     if !status.is_success() {
-        if let Ok(err) = serde_json::from_str::<OpenAiErrorBody>(&text) {
-            if let Some(msg) = err.error.and_then(|e| e.message) {
-                return Err(format!("API error ({status}): {msg}"));
-            }
-        }
-        let preview: String = text.chars().take(200).collect();
-        return Err(format!("API error ({status}): {preview}"));
+        return Err(openai_http_error_message(status, &text));
     }
 
     let parsed: OpenAiChatResponse =

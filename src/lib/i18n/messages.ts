@@ -48,6 +48,8 @@ export const messageKeys = [
   "ai.errorDisabled",
   "ai.errorNoKey",
   "ai.errorGeneric",
+  "ai.errorApiServer",
+  "ai.errorApiBadUrl",
   "ai.clear",
   "ai.improveSelection",
   "ai.typstHelp",
@@ -255,6 +257,10 @@ const de: Table = {
   "ai.errorDisabled": "Assistent ist in den Einstellungen deaktiviert.",
   "ai.errorNoKey": "Kein API-Key hinterlegt. Bitte in den Einstellungen konfigurieren.",
   "ai.errorGeneric": "Anfrage fehlgeschlagen.",
+  "ai.errorApiServer":
+    "Der KI-Dienst hat mit einem Serverfehler geantwortet (HTTP 5xx). Später erneut versuchen, Modell und API-Adresse in den Einstellungen prüfen oder den Status beim Anbieter prüfen.",
+  "ai.errorApiBadUrl":
+    "Die API-URL liefert keine JSON-Antwort (z. B. eine HTML-Fehlerseite). In den Einstellungen die Basis-URL prüfen — sie muss auf die OpenAI-kompatible Wurzel zeigen (z. B. …/v1).",
   "ai.clear": "Verlauf leeren",
   "ai.improveSelection": "Ausgewählten Text umformulieren",
   "ai.typstHelp": "Typst-Hilfe zu ausgewähltem Text",
@@ -473,6 +479,10 @@ const en: Table = {
   "ai.errorDisabled": "The assistant is disabled in Settings.",
   "ai.errorNoKey": "No API key configured. Add one in Settings.",
   "ai.errorGeneric": "Request failed.",
+  "ai.errorApiServer":
+    "The AI service returned a server error (HTTP 5xx). Try again later, check the model and API base URL in Settings, or check the provider’s status.",
+  "ai.errorApiBadUrl":
+    "The API URL did not return JSON (e.g. an HTML error page). Check the base URL in Settings — it must point at the OpenAI-compatible API root (often ending with /v1).",
   "ai.clear": "Clear chat",
   "ai.improveSelection": "Improve selection",
   "ai.typstHelp": "Typst help for selection",

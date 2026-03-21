@@ -101,6 +101,8 @@
     const m = msg.toLowerCase();
     if (m.includes("disabled")) return t("ai.errorDisabled");
     if (m.includes("no api key")) return t("ai.errorNoKey");
+    if (msg.startsWith("api_server_error:")) return t("ai.errorApiServer");
+    if (msg.startsWith("api_html_response:")) return t("ai.errorApiBadUrl");
     return `${t("ai.errorGeneric")} ${msg}`;
   }
 

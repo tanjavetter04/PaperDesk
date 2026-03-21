@@ -24,7 +24,10 @@ use commands::project::{
     duplicate_project, get_open_project, get_recent_projects, open_project, rename_project,
 };
 use bib_watch::restart_bib_watcher;
-use tinymist_preview::{restart_tinymist_preview, start_tinymist_preview, TinymistSession};
+use tinymist_preview::{
+    restart_tinymist_preview, start_tinymist_preview, tinymist_panel_scroll_to_source,
+    TinymistSession,
+};
 
 /// Shared application state (current project + paths).
 pub struct AppState {
@@ -109,6 +112,7 @@ pub fn run() {
             create_empty_project,
             start_tinymist_preview,
             restart_tinymist_preview,
+            tinymist_panel_scroll_to_source,
             history_get_status,
             history_respond_enable,
             history_respond_existing_git,

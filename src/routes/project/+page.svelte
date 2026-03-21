@@ -23,6 +23,7 @@
     closeProject,
     startTinymistPreview,
     restartTinymistPreview,
+    tinymistPanelScrollToSource,
     historyGetStatus,
     historyRespondEnable,
     historyRespondExistingGit,
@@ -92,6 +93,7 @@
 
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
   let diagnosticsTimer: ReturnType<typeof setTimeout> | null = null;
+  let previewSourceScrollTimer: ReturnType<typeof setTimeout> | null = null;
   let historyIdleTimer: ReturnType<typeof setTimeout> | null = null;
 
   const HISTORY_IDLE_MS = 10_000;
@@ -109,6 +111,8 @@
   const LIVE_SAVE_DEBOUNCE_MS = 140;
   /** Typst compile for the diagnostics panel (tinymist preview does not feed this list). */
   const DIAGNOSTICS_DEBOUNCE_MS = 420;
+  /** Source caret → tinymist live preview scroll (`panelScrollTo`). */
+  const PREVIEW_SOURCE_SCROLL_DEBOUNCE_MS = 120;
 
   const historyActive = $derived.by(() => {
     const s = historyStatus;
@@ -783,6 +787,7 @@
   onDestroy(() => {
     if (saveTimer) clearTimeout(saveTimer);
     if (diagnosticsTimer) clearTimeout(diagnosticsTimer);
+    if (previewSourceScrollTimer) clearTimeout(previewSourceScrollTimer);
     clearHistoryIdleTimer();
     if (bibTinymistTimer) clearTimeout(bibTinymistTimer);
   });
@@ -833,6 +838,19 @@
     }, DIAGNOSTICS_DEBOUNCE_MS);
   }
 
+  function schedulePreviewSourceScroll(line0: number, character: number) {
+    if (!selectedPath?.endsWith(".typ")) return;
+    if (!previewUrl) return;
+    if (splitDragging) return;
+    const rel = selectedPath;
+    if (previewSourceScrollTimer) clearTimeout(previewSourceScrollTimer);
+    previewSourceScrollTimer = setTimeout(() => {
+      previewSourceScrollTimer = null;
+      if (selectedPath !== rel) return;
+      void tinymistPanelScrollToSource(rel, line0, character).catch(() => {});
+    }, PREVIEW_SOURCE_SCROLL_DEBOUNCE_MS);
+  }
+
   async function refreshDiagnostics() {
     if (!selectedPath?.endsWith(".typ")) return;
     const pathWhenStarted = selectedPath;
@@ -871,6 +889,10 @@
     if (diagnosticsTimer) {
       clearTimeout(diagnosticsTimer);
       diagnosticsTimer = null;
+    }
+    if (previewSourceScrollTimer) {
+      clearTimeout(previewSourceScrollTimer);
+      previewSourceScrollTimer = null;
     }
     const prevPath = selectedPath;
     const prevBuffer = buffer;
@@ -1089,6 +1111,8 @@
         aiEditorRef={aiEditorRef}
         onDocumentChange={onEditorChange}
         onReady={onEditorReady}
+        onTypstPreviewSourceScroll={(pos) =>
+          schedulePreviewSourceScroll(pos.line0, pos.character)}
         compileDiagnostics={diagnostics}
         focusDiagnosticRequest={diagnosticFocus}
         {previewScroll}

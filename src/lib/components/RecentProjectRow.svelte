@@ -325,17 +325,6 @@
       color-mix(in srgb, var(--pd-muted) 32%, transparent) 45%,
       color-mix(in srgb, var(--pd-muted) 18%, transparent) 90%
     );
-    animation: thumb-pulse 1.1s ease-in-out infinite;
-  }
-
-  @keyframes thumb-pulse {
-    0%,
-    100% {
-      opacity: 0.55;
-    }
-    50% {
-      opacity: 1;
-    }
   }
 
   .thumb-img {

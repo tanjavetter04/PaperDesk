@@ -8,7 +8,6 @@
     lineNumbers,
     highlightActiveLineGutter,
     highlightActiveLine,
-    drawSelection,
     dropCursor,
     rectangularSelection,
     crosshairCursor,
@@ -58,6 +57,7 @@
     onDocumentChange,
     onReady,
     onCursorActivity,
+    onTypstPreviewSourceScroll,
     compileDiagnostics = [],
     focusDiagnosticRequest,
     previewScroll,
@@ -74,6 +74,11 @@
     onReady?: (text: string, loadedPath: string) => void;
     /** UTF-8 byte offset of the primary cursor (for PDF forward sync). */
     onCursorActivity?: (utf8ByteOffset: number) => void;
+    /** Caret in source → tinymist `panelScrollTo` (UTF-16 column within line, same as CodeMirror). */
+    onTypstPreviewSourceScroll?: (pos: {
+      line0: number;
+      character: number;
+    }) => void;
     compileDiagnostics?: CompileDiagnostic[];
     focusDiagnosticRequest?: { tick: number; target: CompileDiagnostic | null };
     /** Live-preview click → source (0-based line/column from tinymist). */
@@ -141,6 +146,9 @@
   function extensions(
     onChange: (s: string) => void,
     onCursor: ((utf8: number) => void) | undefined,
+    onPreviewSrcScroll:
+      | ((pos: { line0: number; character: number }) => void)
+      | undefined,
     cmds: HostCommands | undefined,
     typstFile: boolean,
   ) {
@@ -148,7 +156,6 @@
       lineNumbers(),
       highlightActiveLineGutter(),
       highlightActiveLine(),
-      drawSelection(),
       dropCursor(),
       rectangularSelection(),
       crosshairCursor(),
@@ -196,6 +203,18 @@
           const head = u.state.selection.main.head;
           onCursor(utf8OffsetBefore(u.state.doc, head));
         }
+        if (
+          typstFile &&
+          onPreviewSrcScroll &&
+          (u.selectionSet || u.docChanged)
+        ) {
+          const head = u.state.selection.main.head;
+          const ln = u.state.doc.lineAt(head);
+          onPreviewSrcScroll({
+            line0: ln.number - 1,
+            character: head - ln.from,
+          });
+        }
       }),
     ];
   }
@@ -225,6 +244,7 @@
         extensions: extensions(
           (s) => onDocumentChange(s),
           onCursorActivity,
+          onTypstPreviewSourceScroll,
           hostCommands,
           p.endsWith(".typ"),
         ),
@@ -443,7 +463,7 @@
     {/if}
     {#if path?.endsWith(".typ") && appSettings.spellcheckLanguage !== "off"}
       {#if spellHeadState.kind === "checking"}
-        <span class="spell-status spell-status-busy" role="status" aria-live="polite"
+        <span class="spell-status" role="status" aria-live="polite"
           >{t("editor.spellChecking")}</span
         >
       {:else if spellHeadState.kind === "done"}
@@ -492,27 +512,6 @@
     font-size: 0.85rem;
     font-weight: 500;
     color: var(--pd-muted);
-  }
-
-  .spell-status-busy {
-    animation: spell-pulse 1.1s ease-in-out infinite;
-  }
-
-  @keyframes spell-pulse {
-    0%,
-    100% {
-      opacity: 0.72;
-    }
-    50% {
-      opacity: 1;
-    }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .spell-status-busy {
-      animation: none;
-      opacity: 0.9;
-    }
   }
 
   .muted {
