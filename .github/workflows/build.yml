@@ -13,8 +13,10 @@ jobs:
         include:
           - platform: ubuntu-22.04
             args: ""
+            artifact_name: paperdesk-linux
           - platform: windows-latest
             args: ""
+            artifact_name: paperdesk-windows
 
     runs-on: ${{ matrix.platform }}
 
@@ -58,11 +60,16 @@ jobs:
         run: npm run check
 
       - name: Build Tauri app (tauri-action)
-        uses: tauri-apps/tauri-action@v1
+        uses: tauri-apps/tauri-action@v0.6.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tauriScript: npm run tauri
           args: ${{ matrix.args }}
-          uploadWorkflowArtifacts: true
-          workflowArtifactNamePattern: paperdesk-[platform]-[bundle]
+
+      - name: Upload bundle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: src-tauri/target/release/bundle/
+          if-no-files-found: error
