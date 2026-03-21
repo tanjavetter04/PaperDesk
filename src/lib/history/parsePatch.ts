@@ -161,6 +161,7 @@ const REASON_TO_KEY: Partial<Record<string, MessageKey>> = {
   hub: "history.reason.hub",
   close: "history.reason.close",
   "move/rename": "history.reason.moveRename",
+  delete: "history.reason.delete",
 };
 
 /**

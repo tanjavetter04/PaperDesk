@@ -100,6 +100,11 @@ export async function moveProjectPath(from: string, to: string): Promise<void> {
   return invoke("move_project_path", { from, to });
 }
 
+/** Remove a file or folder under the project root (`main.typ` is not allowed). */
+export async function deleteProjectPath(relativePath: string): Promise<void> {
+  return invoke("delete_project_path", { relativePath });
+}
+
 export async function readTextFile(relativePath: string): Promise<string> {
   return invoke("read_text_file", { relativePath });
 }

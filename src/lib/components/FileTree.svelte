@@ -12,6 +12,8 @@
     onNewFile,
     onNewFolder,
     onMoveFile,
+    onRenameItem,
+    onDeleteItem,
   }: {
     entries: ProjectEntry[];
     selectedFilePath: string | null;
@@ -22,11 +24,20 @@
     onNewFile: () => void;
     onNewFolder: () => void;
     onMoveFile: (destinationDir: string) => void;
+    onRenameItem: (path: string, isDir: boolean) => void;
+    onDeleteItem: (path: string, isDir: boolean) => void;
   } = $props();
 
   let expanded = $state<Record<string, boolean>>({ "": true });
   let moveOpen = $state(false);
   let moveDestDir = $state("");
+  let ctxMenu = $state<{
+    x: number;
+    y: number;
+    path: string;
+    isDir: boolean;
+  } | null>(null);
+  let ctxMenuEl = $state<HTMLDivElement | null>(null);
 
   const tree = $derived(buildFileTree(entries));
 
@@ -41,6 +52,10 @@
     return i === -1 ? "" : path.slice(0, i);
   }
 
+  function isEditorTypFile(path: string): boolean {
+    return path.toLowerCase().endsWith(".typ");
+  }
+
   function toggleDir(path: string) {
     expanded[path] = !expanded[path];
     expanded = expanded;
@@ -50,7 +65,7 @@
     if (node.isDir) {
       onTargetDirChange(node.path);
       toggleDir(node.path);
-    } else {
+    } else if (isEditorTypFile(node.path)) {
       onSelectFile(node.path);
       onTargetDirChange(parentDirOfFile(node.path));
     }
@@ -89,6 +104,69 @@
     moveOpen = false;
     onMoveFile(moveDestDir);
   }
+
+  const ctxMainLocked = $derived(ctxMenu?.path === "main.typ");
+
+  const ctxMenuPos = $derived.by(() => {
+    if (!ctxMenu) return null;
+    const pad = 8;
+    const mw = 200;
+    const mh = 88;
+    let x = ctxMenu.x;
+    let y = ctxMenu.y;
+    if (typeof window !== "undefined") {
+      x = Math.min(x, window.innerWidth - mw - pad);
+      y = Math.min(y, window.innerHeight - mh - pad);
+      x = Math.max(pad, x);
+      y = Math.max(pad, y);
+    }
+    return { left: `${x}px`, top: `${y}px` };
+  });
+
+  function openCtxMenu(e: MouseEvent, node: FileTreeNode) {
+    e.preventDefault();
+    e.stopPropagation();
+    ctxMenu = { x: e.clientX, y: e.clientY, path: node.path, isDir: node.isDir };
+  }
+
+  function closeCtxMenu() {
+    ctxMenu = null;
+  }
+
+  function ctxRename() {
+    if (!ctxMenu || ctxMainLocked) return;
+    const { path, isDir } = ctxMenu;
+    closeCtxMenu();
+    onRenameItem(path, isDir);
+  }
+
+  function ctxDelete() {
+    if (!ctxMenu || ctxMainLocked) return;
+    const { path, isDir } = ctxMenu;
+    closeCtxMenu();
+    onDeleteItem(path, isDir);
+  }
+
+  $effect(() => {
+    if (!ctxMenu) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeCtxMenu();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
+  $effect(() => {
+    if (!ctxMenu) return;
+    const onDown = (e: PointerEvent) => {
+      if (e.button === 2) return;
+      const t = e.target;
+      if (t instanceof Node && ctxMenuEl?.contains(t)) return;
+      closeCtxMenu();
+    };
+    document.addEventListener("pointerdown", onDown);
+    return () => document.removeEventListener("pointerdown", onDown);
+  });
 </script>
 
 <div class="tree">
@@ -159,6 +237,37 @@
       </li>
     {/each}
   </ul>
+
+  {#if ctxMenu && ctxMenuPos}
+    <div
+      bind:this={ctxMenuEl}
+      class="ctx-menu"
+      role="menu"
+      style:left={ctxMenuPos.left}
+      style:top={ctxMenuPos.top}
+    >
+      <button
+        type="button"
+        class="ctx-item"
+        role="menuitem"
+        disabled={ctxMainLocked}
+        title={ctxMainLocked ? t("fileTree.mainLockedCtx") : undefined}
+        onclick={ctxRename}
+      >
+        {t("fileTree.ctxRename")}
+      </button>
+      <button
+        type="button"
+        class="ctx-item ctx-item--danger"
+        role="menuitem"
+        disabled={ctxMainLocked}
+        title={ctxMainLocked ? t("fileTree.mainLockedCtx") : undefined}
+        onclick={ctxDelete}
+      >
+        {t("fileTree.ctxDelete")}
+      </button>
+    </div>
+  {/if}
 </div>
 
 {#snippet caret(node: FileTreeNode)}
@@ -205,18 +314,51 @@
   </svg>
 {/snippet}
 
-{#snippet fileRow(node: FileTreeNode, depth: number)}
-  <button
-    type="button"
-    class="row file"
-    class:sel={node.path === selectedFilePath}
-    style:padding-left={`${0.5 + depth * 0.75}rem`}
-    onclick={() => rowClick(node)}
+{#snippet notEditorGlyph()}
+  <svg
+    class="tree-svg tree-svg--no-editor"
+    viewBox="0 0 24 24"
+    width="12"
+    height="12"
+    aria-hidden="true"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="2"
+    stroke-linecap="round"
   >
-    <span class="caret spacer"></span>
-    <span class="row-icon">{@render fileGlyph()}</span>
-    <span class="label">{node.name}</span>
-  </button>
+    <circle cx="12" cy="12" r="9" opacity="0.85" />
+    <path d="M7 7l10 10" />
+  </svg>
+{/snippet}
+
+{#snippet fileRow(node: FileTreeNode, depth: number)}
+  {#if isEditorTypFile(node.path)}
+    <button
+      type="button"
+      class="row file"
+      class:sel={node.path === selectedFilePath}
+      style:padding-left={`${0.5 + depth * 0.75}rem`}
+      onclick={() => rowClick(node)}
+      oncontextmenu={(e) => openCtxMenu(e, node)}
+    >
+      <span class="caret spacer"></span>
+      <span class="row-icon">{@render fileGlyph()}</span>
+      <span class="label">{node.name}</span>
+    </button>
+  {:else}
+    <div
+      class="row file not-editor"
+      style:padding-left={`${0.5 + depth * 0.75}rem`}
+      title={t("fileTree.notEditorFile")}
+      aria-label={`${node.name}. ${t("fileTree.notEditorFile")}`}
+      oncontextmenu={(e) => openCtxMenu(e, node)}
+    >
+      <span class="caret spacer"></span>
+      <span class="row-icon">{@render fileGlyph()}</span>
+      <span class="label">{node.name}</span>
+      <span class="not-editor-mark">{@render notEditorGlyph()}</span>
+    </div>
+  {/if}
 {/snippet}
 
 {#snippet dirRow(node: FileTreeNode, depth: number)}
@@ -227,6 +369,7 @@
     class:sel={node.path === targetDirPath}
     style:padding-left={`${0.5 + depth * 0.75}rem`}
     onclick={() => rowClick(node)}
+    oncontextmenu={(e) => openCtxMenu(e, node)}
   >
     {@render caret(node)}
     <span class="row-icon">{@render folderGlyph()}</span>
@@ -288,6 +431,47 @@
     border-right: 1px solid var(--pd-border);
     background: var(--pd-surface);
     position: relative;
+  }
+
+  .ctx-menu {
+    position: fixed;
+    z-index: 115;
+    min-width: 10.5rem;
+    padding: 0.28rem 0;
+    border-radius: 6px;
+    border: 1px solid var(--pd-border);
+    background: var(--pd-surface);
+    box-shadow: 0 10px 28px rgb(0 0 0 / 0.28);
+  }
+
+  .ctx-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 0.38rem 0.75rem;
+    border: none;
+    background: transparent;
+    color: var(--pd-text);
+    font-size: 1rem;
+    font-family: var(--pd-font), system-ui, sans-serif;
+    cursor: pointer;
+  }
+
+  .ctx-item:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--pd-text) 7%, transparent);
+  }
+
+  .ctx-item:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+
+  .ctx-item--danger:not(:disabled) {
+    color: color-mix(in srgb, #c62828 72%, var(--pd-text));
+  }
+
+  :global(:root[data-theme="dark"]) .ctx-item--danger:not(:disabled) {
+    color: color-mix(in srgb, #ef9a9a 85%, var(--pd-text));
   }
 
   .tree-head {
@@ -456,6 +640,36 @@
   .row.file.sel .tree-svg--file {
     color: color-mix(in srgb, var(--pd-text) 70%, var(--pd-accent));
     opacity: 1;
+  }
+
+  .row.file.not-editor {
+    cursor: default;
+    opacity: 0.72;
+  }
+
+  .row.file.not-editor:hover {
+    background: transparent;
+  }
+
+  .row.file.not-editor .label {
+    color: color-mix(in srgb, var(--pd-muted) 42%, var(--pd-text));
+  }
+
+  .row.file.not-editor .tree-svg--file {
+    opacity: 0.55;
+  }
+
+  .not-editor-mark {
+    flex-shrink: 0;
+    margin-left: auto;
+    padding-left: 0.35rem;
+    display: flex;
+    align-items: center;
+  }
+
+  .tree-svg--no-editor {
+    color: color-mix(in srgb, var(--pd-muted) 70%, var(--pd-text));
+    opacity: 0.9;
   }
 
   .folder-name {

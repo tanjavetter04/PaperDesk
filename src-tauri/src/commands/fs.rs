@@ -146,6 +146,39 @@ pub fn move_project_path(
     Ok(())
 }
 
+/// Delete a file or directory under the project root (`relative_path` uses `/`).
+#[tauri::command]
+pub fn delete_project_path(
+    state: tauri::State<'_, AppState>,
+    relative_path: String,
+) -> Result<(), String> {
+    let rel = relative_path.trim().replace('\\', "/");
+    if rel.is_empty() {
+        return Err("cannot delete project root".into());
+    }
+    if rel == MAIN_TYP {
+        return Err("cannot delete main.typ (project entry file)".into());
+    }
+    let guard = state.project_root.lock().map_err(|e| e.to_string())?;
+    let root = guard
+        .clone()
+        .ok_or_else(|| "no project open".to_string())?;
+    let path = join_under_root(&root, &rel)?;
+    if !path.exists() {
+        return Err("path does not exist".into());
+    }
+    let meta = path.metadata().map_err(|e| e.to_string())?;
+    if meta.is_dir() {
+        fs::remove_dir_all(&path).map_err(|e| e.to_string())?;
+    } else {
+        fs::remove_file(&path).map_err(|e| e.to_string())?;
+    }
+    drop(guard);
+    history::note_dirty(&state);
+    let _ = history::try_checkpoint(&state, &root, "delete", true);
+    Ok(())
+}
+
 #[tauri::command]
 pub fn read_text_file(state: tauri::State<'_, AppState>, relative_path: String) -> Result<String, String> {
     let guard = state.project_root.lock().map_err(|e| e.to_string())?;

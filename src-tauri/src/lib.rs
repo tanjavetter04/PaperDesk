@@ -14,8 +14,8 @@ use commands::ai::{ai_chat, ai_get_status, ai_set_config};
 use commands::clipboard_paste::clipboard_paste_for_typst;
 use commands::compile_cmd::{compile_project, compile_project_at_path, export_pdf_to_path};
 use commands::fs::{
-    create_project_dir, list_project_files, move_project_path, read_text_file, write_binary_file,
-    write_text_file,
+    create_project_dir, delete_project_path, list_project_files, move_project_path, read_text_file,
+    write_binary_file, write_text_file,
 };
 use commands::history_cmd::{
     history_checkpoint, history_diff_workdir, history_get_status, history_list_commits,
@@ -105,6 +105,7 @@ pub fn run() {
             list_project_files,
             create_project_dir,
             move_project_path,
+            delete_project_path,
             read_text_file,
             write_text_file,
             write_binary_file,

@@ -239,6 +239,19 @@ pub fn create_checkpoint(repo: &Repository, message: &str) -> Result<Option<Oid>
         .add_all(["*"], IndexAddOption::DEFAULT, None)
         .map_err(|e| e.to_string())?;
 
+    // Pasted images live under `assets/` and are often listed in `.gitignore`. Without
+    // `FORCE`, they never enter checkpoint commits, so `history_restore` brings back
+    // `main.typ` references but not the files (Typst: "file not found").
+    if repo
+        .workdir()
+        .map(|w| w.join("assets").is_dir())
+        .unwrap_or(false)
+    {
+        index
+            .add_all(["assets"], IndexAddOption::FORCE, None)
+            .map_err(|e| e.to_string())?;
+    }
+
     let tree_id = index
         .write_tree_to(repo)
         .map_err(|e| e.to_string())?;

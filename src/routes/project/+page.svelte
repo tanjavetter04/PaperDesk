@@ -18,6 +18,7 @@
     writeTextFile,
     createProjectDir,
     moveProjectPath,
+    deleteProjectPath,
     compileProject,
     exportPdf,
     closeProject,
@@ -71,6 +72,10 @@
   let messageModalOpen = $state(false);
   let messageModalText = $state("");
   let bibConflictModalOpen = $state(false);
+  let treeRenameModalOpen = $state(false);
+  let treeRenameSourcePath = $state<string | null>(null);
+  let treeDeleteModalOpen = $state(false);
+  let treeDeletePath = $state<string | null>(null);
   /** Bump to force EditorPane to re-read the current `selectedPath` from disk. */
   let reloadFromDiskTick = $state(0);
 
@@ -411,15 +416,27 @@
     return projectEntries.filter((e) => !e.isDir).map((e) => e.path);
   }
 
+  function pickTypEditorPath(files: string[]): string | null {
+    return (
+      files.find((f) => f === "main.typ") ??
+      files.find((f) => f.toLowerCase().endsWith(".typ")) ??
+      null
+    );
+  }
+
   async function refreshFiles() {
     try {
       projectEntries = await listProjectEntries();
       const files = projectFilePaths();
       if (files.length && !selectedPath) {
-        selectedPath = files.find((f) => f === "main.typ") ?? files[0] ?? null;
+        selectedPath = pickTypEditorPath(files);
       }
-      if (selectedPath && !files.includes(selectedPath)) {
-        selectedPath = files.find((f) => f === "main.typ") ?? files[0] ?? null;
+      const stale =
+        selectedPath &&
+        (!files.includes(selectedPath) ||
+          !selectedPath.toLowerCase().endsWith(".typ"));
+      if (stale) {
+        selectedPath = pickTypEditorPath(files);
         editorBufferPath = null;
       }
     } catch {
@@ -480,6 +497,135 @@
   function parentDirOfRel(path: string): string {
     const i = path.lastIndexOf("/");
     return i === -1 ? "" : path.slice(0, i);
+  }
+
+  function treeItemBasename(path: string): string {
+    const i = path.lastIndexOf("/");
+    return i === -1 ? path : path.slice(i + 1);
+  }
+
+  function adjustTreeTargetAfterRenamePrefix(from: string, to: string) {
+    if (treeTargetDir === from) {
+      treeTargetDir = to;
+    } else if (treeTargetDir.startsWith(from + "/")) {
+      treeTargetDir = to + treeTargetDir.slice(from.length);
+    }
+  }
+
+  function openTreeRename(path: string, _isDir: boolean) {
+    if (path === "main.typ") return;
+    treeRenameSourcePath = path;
+    treeRenameModalOpen = true;
+  }
+
+  function openTreeDelete(path: string, _isDir: boolean) {
+    if (path === "main.typ") return;
+    treeDeletePath = path;
+    treeDeleteModalOpen = true;
+  }
+
+  async function confirmTreeRename(raw: string) {
+    treeRenameModalOpen = false;
+    const from = treeRenameSourcePath;
+    treeRenameSourcePath = null;
+    if (!from) return;
+    const base = safeTreeBasename(raw);
+    if (!base) {
+      showMessage(t("project.invalidName"));
+      return;
+    }
+    const parent = parentDirOfRel(from);
+    const to = parent ? `${parent}/${base}` : base;
+    if (to === from) return;
+    if (projectEntries.some((e) => e.path === to)) {
+      showMessage(t("project.pathExists"));
+      return;
+    }
+    try {
+      if (selectedPath) {
+        const underRename =
+          selectedPath === from || selectedPath.startsWith(from + "/");
+        if (underRename) {
+          if (saveTimer) {
+            clearTimeout(saveTimer);
+            saveTimer = null;
+          }
+          await flushPathToDisk(selectedPath, buffer);
+        }
+      }
+      await moveProjectPath(from, to);
+      if (selectedPath === from) {
+        selectedPath = to;
+        treeTargetDir = parentDirOfRel(to);
+        editorBufferPath = null;
+      } else if (selectedPath?.startsWith(from + "/")) {
+        selectedPath = to + selectedPath.slice(from.length);
+        treeTargetDir = parentDirOfRel(selectedPath);
+        editorBufferPath = null;
+      }
+      adjustTreeTargetAfterRenamePrefix(from, to);
+      await refreshFiles();
+      try {
+        await historyCheckpoint("move/rename", true);
+      } catch {
+        /* best effort */
+      }
+      const watch = appSettings.zoteroBibPath?.trim();
+      if (watch && selectedPath?.endsWith(".bib")) {
+        void restartBibWatcher(selectedPath);
+      }
+      await ensurePreview(true);
+      void refreshDiagnostics();
+    } catch (e) {
+      showMessage(formatUserError(e));
+    }
+  }
+
+  async function confirmTreeDelete() {
+    const path = treeDeletePath;
+    treeDeleteModalOpen = false;
+    treeDeletePath = null;
+    if (!path) return;
+    try {
+      if (
+        selectedPath &&
+        (selectedPath === path || selectedPath.startsWith(path + "/"))
+      ) {
+        if (saveTimer) {
+          clearTimeout(saveTimer);
+          saveTimer = null;
+        }
+        await flushPathToDisk(selectedPath, buffer);
+      }
+      await deleteProjectPath(path);
+      if (treeTargetDir === path || treeTargetDir.startsWith(path + "/")) {
+        treeTargetDir = parentDirOfRel(path);
+      }
+      await refreshFiles();
+      const files = projectFilePaths();
+      if (
+        selectedPath &&
+        (selectedPath === path || selectedPath.startsWith(path + "/"))
+      ) {
+        selectedPath = pickTypEditorPath(files);
+        editorBufferPath = null;
+        diagnostics = [];
+        saveLabel = "saved";
+      }
+      try {
+        await historyCheckpoint("delete", true);
+      } catch {
+        /* best effort */
+      }
+      const watch = appSettings.zoteroBibPath?.trim();
+      if (watch && selectedPath?.endsWith(".bib")) {
+        void restartBibWatcher(selectedPath);
+      }
+      await ensurePreview(true);
+      void refreshDiagnostics();
+    } catch (e) {
+      showMessage(formatUserError(e));
+    }
   }
 
   function projectFolderLabel(absolutePath: string): string {
@@ -881,6 +1027,7 @@
   }
 
   function selectFile(p: string) {
+    if (!p.toLowerCase().endsWith(".typ")) return;
     if (p === selectedPath) return;
     if (saveTimer) {
       clearTimeout(saveTimer);
@@ -1086,6 +1233,8 @@
         onNewFile={handleNewFile}
         onNewFolder={handleNewFolder}
         onMoveFile={handleMoveFile}
+        onRenameItem={openTreeRename}
+        onDeleteItem={openTreeDelete}
       />
     </aside>
     <div
@@ -1194,6 +1343,18 @@
     onSubmit={(v) => void confirmNewFolder(v)}
   />
   <InputModal
+    open={treeRenameModalOpen}
+    title={t("fileTree.renameItemTitle")}
+    hint={t("fileTree.renameItemHint")}
+    initialValue={treeRenameSourcePath ? treeItemBasename(treeRenameSourcePath) : ""}
+    submitLabel={t("project.renameSubmit")}
+    onClose={() => {
+      treeRenameModalOpen = false;
+      treeRenameSourcePath = null;
+    }}
+    onSubmit={(v) => void confirmTreeRename(v)}
+  />
+  <InputModal
     open={projectRenameModalOpen}
     title={t("project.renameTitle")}
     hint={t("project.renameHint")}
@@ -1206,6 +1367,21 @@
     open={messageModalOpen}
     message={messageModalText}
     onClose={() => (messageModalOpen = false)}
+  />
+
+  <ConfirmModal
+    open={treeDeleteModalOpen}
+    title={t("fileTree.deleteItemTitle")}
+    message={treeDeletePath
+      ? t("fileTree.deleteItemMessage", { path: treeDeletePath })
+      : ""}
+    confirmLabel={t("fileTree.deleteConfirm")}
+    cancelLabel={t("common.cancel")}
+    onConfirm={() => void confirmTreeDelete()}
+    onCancel={() => {
+      treeDeleteModalOpen = false;
+      treeDeletePath = null;
+    }}
   />
 
   <ConfirmModal
