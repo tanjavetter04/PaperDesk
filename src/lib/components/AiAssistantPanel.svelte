@@ -4,6 +4,24 @@
 
   const SYSTEM = `You are a concise assistant for Typst and academic writing. Prefer short answers; use fenced code blocks for Typst when helpful. Match the user's language when it is clear from their message.`;
 
+  const AI_PANEL_W_KEY = "paperdesk.aiPanelWidthPx";
+  const AI_PANEL_MIN = 280;
+  const AI_PANEL_MAX = 960;
+  const AI_PANEL_DEFAULT = 440;
+
+  function readStoredPanelWidth(): number {
+    if (typeof localStorage === "undefined") return AI_PANEL_DEFAULT;
+    const n = Number(localStorage.getItem(AI_PANEL_W_KEY));
+    return Number.isFinite(n) && n >= AI_PANEL_MIN && n <= AI_PANEL_MAX ? n : AI_PANEL_DEFAULT;
+  }
+
+  function clampPanelW(w: number): number {
+    const maxV =
+      typeof window !== "undefined" ? Math.max(AI_PANEL_MIN, window.innerWidth - 32) : AI_PANEL_MAX;
+    const cap = Math.min(AI_PANEL_MAX, maxV);
+    return Math.min(cap, Math.max(AI_PANEL_MIN, Math.round(w)));
+  }
+
   let {
     open,
     onClose,
@@ -20,10 +38,57 @@
   let input = $state("");
   let busy = $state(false);
   let errorLine = $state<string | null>(null);
+  let panelWidthPx = $state(
+    typeof window !== "undefined" ? clampPanelW(readStoredPanelWidth()) : AI_PANEL_DEFAULT,
+  );
+  let resizing = $state(false);
 
   $effect(() => {
     if (!open) errorLine = null;
   });
+
+  $effect(() => {
+    if (typeof window === "undefined") return;
+    function onWinResize() {
+      panelWidthPx = clampPanelW(panelWidthPx);
+    }
+    window.addEventListener("resize", onWinResize);
+    return () => window.removeEventListener("resize", onWinResize);
+  });
+
+  function onResizePointerDown(e: PointerEvent) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const el = e.currentTarget as HTMLElement;
+    const startX = e.clientX;
+    const startW = panelWidthPx;
+    resizing = true;
+    el.setPointerCapture(e.pointerId);
+
+    function onMove(ev: PointerEvent) {
+      const dx = ev.clientX - startX;
+      panelWidthPx = clampPanelW(startW - dx);
+    }
+
+    function onUp() {
+      resizing = false;
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+      if (typeof localStorage !== "undefined") {
+        localStorage.setItem(AI_PANEL_W_KEY, String(panelWidthPx));
+      }
+      try {
+        el.releasePointerCapture(e.pointerId);
+      } catch {
+        /* released */
+      }
+    }
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+  }
 
   function buildApiMessages(forSend: Row[]): AiChatMessage[] {
     return [
@@ -112,10 +177,19 @@
   {#key locale.value}
     <div
       class="panel"
+      class:resizing
+      style:--panel-w="{panelWidthPx}px"
       role="dialog"
       aria-modal="false"
       aria-labelledby="ai-title"
     >
+      <div
+        class="resize-edge"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label={t("ai.resizePanel")}
+        onpointerdown={onResizePointerDown}
+      ></div>
       <div class="head">
         <h2 id="ai-title">{t("ai.title")}</h2>
         <div class="head-actions">
@@ -173,7 +247,8 @@
     top: 4rem;
     bottom: 1rem;
     left: auto;
-    width: min(440px, calc(100vw - 2rem));
+    width: min(var(--panel-w, 440px), calc(100vw - 2rem));
+    min-width: min(240px, calc(100vw - 2rem));
     z-index: 118;
     display: flex;
     flex-direction: column;
@@ -185,6 +260,27 @@
       0 0 0 1px rgb(0 0 0 / 0.06),
       0 16px 48px rgb(0 0 0 / 0.28);
     min-height: 0;
+  }
+
+  .panel.resizing {
+    user-select: none;
+  }
+
+  .resize-edge {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 8px;
+    z-index: 3;
+    cursor: ew-resize;
+    touch-action: none;
+    border-radius: 10px 0 0 10px;
+  }
+
+  .resize-edge:hover,
+  .panel.resizing .resize-edge {
+    background: color-mix(in srgb, var(--pd-accent, var(--pd-text)) 14%, transparent);
   }
 
   .head {
