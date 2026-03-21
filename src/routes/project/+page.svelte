@@ -24,13 +24,20 @@
   let saveLabel = $state<"saved" | "dirty" | "saving">("saved");
   let previewLabel = $state<"idle" | "starting" | "live" | "err">("idle");
   let diagnostics = $state<CompileDiagnostic[]>([]);
+  let diagnosticFocus = $state<{ tick: number; target: CompileDiagnostic | null }>({
+    tick: 0,
+    target: null,
+  });
   let previewUrl = $state<string | null>(null);
   let previewError = $state<string | null>(null);
 
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
+  let diagnosticsTimer: ReturnType<typeof setTimeout> | null = null;
   /** `buffer` is only a safe preview overlay when it matches the open tab (see EditorPane onReady). */
   let editorBufferPath = $state<string | null>(null);
   const LIVE_SAVE_DEBOUNCE_MS = 140;
+  /** Typst compile for the diagnostics panel (tinymist preview does not feed this list). */
+  const DIAGNOSTICS_DEBOUNCE_MS = 420;
 
   const PREVIEW_WIDTH_STORAGE = "paperdesk.previewWidthPx";
   const SIDEBAR_W = 220;
@@ -184,6 +191,7 @@
 
   onDestroy(() => {
     if (saveTimer) clearTimeout(saveTimer);
+    if (diagnosticsTimer) clearTimeout(diagnosticsTimer);
   });
 
   async function persistFile(path: string, text: string) {
@@ -220,14 +228,50 @@
     };
   }
 
+  function scheduleDiagnosticsRefresh() {
+    if (!selectedPath?.endsWith(".typ")) return;
+    if (diagnosticsTimer) clearTimeout(diagnosticsTimer);
+    diagnosticsTimer = setTimeout(() => {
+      diagnosticsTimer = null;
+      void refreshDiagnostics();
+    }, DIAGNOSTICS_DEBOUNCE_MS);
+  }
+
+  async function refreshDiagnostics() {
+    if (!selectedPath?.endsWith(".typ")) return;
+    const pathWhenStarted = selectedPath;
+    const source = previewSourceForCompile();
+    try {
+      const r = await compileProject(null, source);
+      if (selectedPath !== pathWhenStarted) return;
+      diagnostics = r.diagnostics;
+    } catch (e) {
+      if (selectedPath !== pathWhenStarted) return;
+      diagnostics = [
+        {
+          severity: "error",
+          message: String(e),
+          path: null,
+          line: null,
+          column: null,
+        },
+      ];
+    }
+  }
+
   function onEditorChange(text: string) {
     buffer = text;
     scheduleSave();
+    scheduleDiagnosticsRefresh();
   }
 
   async function selectFile(p: string) {
     if (p === selectedPath) return;
     if (saveTimer) clearTimeout(saveTimer);
+    if (diagnosticsTimer) {
+      clearTimeout(diagnosticsTimer);
+      diagnosticsTimer = null;
+    }
     if (selectedPath) {
       try {
         await persistFile(selectedPath, buffer);
@@ -278,6 +322,21 @@
       ];
     }
   }
+
+  function onEditorReady(text: string, loadedPath: string) {
+    buffer = text;
+    editorBufferPath = loadedPath;
+    if (loadedPath.endsWith(".typ")) {
+      void refreshDiagnostics();
+    }
+  }
+
+  function jumpToDiagnosticInEditor(d: CompileDiagnostic) {
+    diagnosticFocus = {
+      tick: diagnosticFocus.tick + 1,
+      target: d,
+    };
+  }
 </script>
 
 <div class="ide">
@@ -305,12 +364,11 @@
       <EditorPane
         path={selectedPath}
         onDocumentChange={onEditorChange}
-        onReady={(t, loadedPath) => {
-          buffer = t;
-          editorBufferPath = loadedPath;
-        }}
+        onReady={onEditorReady}
+        compileDiagnostics={diagnostics}
+        focusDiagnosticRequest={diagnosticFocus}
       />
-      <DiagnosticsPanel {diagnostics} />
+      <DiagnosticsPanel {diagnostics} onJumpTo={jumpToDiagnosticInEditor} />
     </section>
     <div
       class="splitter"

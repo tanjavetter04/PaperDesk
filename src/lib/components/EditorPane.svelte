@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy } from "svelte";
-  import { EditorState } from "@codemirror/state";
+  import { EditorSelection, EditorState } from "@codemirror/state";
   import type { Text } from "@codemirror/state";
   import {
     EditorView,
@@ -15,14 +15,22 @@
   } from "@codemirror/view";
   import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
   import { markdown } from "@codemirror/lang-markdown";
+  import { lintGutter, lintKeymap, setDiagnostics } from "@codemirror/lint";
   import { oneDark } from "@codemirror/theme-one-dark";
   import { readTextFile } from "$lib/tauri/api";
+  import type { CompileDiagnostic } from "$lib/tauri/api";
+  import {
+    compileDiagnosticCursorPos,
+    compileDiagnosticsToCm,
+  } from "$lib/editor/compileDiagnosticsCm";
 
   let {
     path,
     onDocumentChange,
     onReady,
     onCursorActivity,
+    compileDiagnostics = [],
+    focusDiagnosticRequest,
   }: {
     path: string | null;
     onDocumentChange: (text: string) => void;
@@ -30,6 +38,8 @@
     onReady?: (text: string, loadedPath: string) => void;
     /** UTF-8 byte offset of the primary cursor (for PDF forward sync). */
     onCursorActivity?: (utf8ByteOffset: number) => void;
+    compileDiagnostics?: CompileDiagnostic[];
+    focusDiagnosticRequest?: { tick: number; target: CompileDiagnostic | null };
   } = $props();
 
   let host = $state<HTMLDivElement | null>(null);
@@ -53,7 +63,8 @@
       crosshairCursor(),
       history(),
       markdown(),
-      keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
+      lintGutter(),
+      keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab, ...lintKeymap]),
       oneDark,
       EditorView.lineWrapping,
       EditorView.updateListener.of((u) => {
@@ -100,6 +111,35 @@
     return () => {
       cancelled = true;
     };
+  });
+
+  $effect(() => {
+    const v = view;
+    const p = path;
+    const diags = compileDiagnostics;
+    if (!v) return;
+    if (!p?.endsWith(".typ")) {
+      v.dispatch(setDiagnostics(v.state, []));
+      return;
+    }
+    v.dispatch(setDiagnostics(v.state, compileDiagnosticsToCm(v.state.doc, p, diags)));
+  });
+
+  $effect(() => {
+    const v = view;
+    const p = path;
+    const { tick, target } = focusDiagnosticRequest ?? {
+      tick: 0,
+      target: null,
+    };
+    if (!v || tick === 0 || !target || !p?.endsWith(".typ")) return;
+    const pos = compileDiagnosticCursorPos(v.state.doc, p, target);
+    if (pos == null) return;
+    v.focus();
+    v.dispatch({
+      selection: EditorSelection.cursor(pos),
+      effects: EditorView.scrollIntoView(pos, { y: "center" }),
+    });
   });
 
   onDestroy(() => {

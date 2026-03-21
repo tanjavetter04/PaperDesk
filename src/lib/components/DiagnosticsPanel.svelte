@@ -1,7 +1,14 @@
 <script lang="ts">
   import type { CompileDiagnostic } from "$lib/tauri/api";
 
-  let { diagnostics }: { diagnostics: CompileDiagnostic[] } = $props();
+  let {
+    diagnostics,
+    onJumpTo,
+  }: {
+    diagnostics: CompileDiagnostic[];
+    /** Focus the editor at this diagnostic (same file only). */
+    onJumpTo?: (d: CompileDiagnostic) => void;
+  } = $props();
 </script>
 
 <div class="panel">
@@ -13,10 +20,17 @@
       <ul>
         {#each diagnostics as d, i (i)}
           <li class={d.severity}>
-            {#if d.path}
-              <span class="loc">{d.path}{#if d.line != null}:{d.line}{/if}{#if d.column != null}:{d.column}{/if}</span>
-            {/if}
-            <span class="msg">{d.message}</span>
+            <button
+              type="button"
+              class="diag-hit"
+              disabled={!onJumpTo}
+              onclick={() => onJumpTo?.(d)}
+            >
+              {#if d.path}
+                <span class="loc">{d.path}{#if d.line != null}:{d.line}{/if}{#if d.column != null}:{d.column}{/if}</span>
+              {/if}
+              <span class="msg">{d.message}</span>
+            </button>
           </li>
         {/each}
       </ul>
@@ -64,9 +78,32 @@
   li {
     font-size: 0.8rem;
     margin-bottom: 0.45rem;
-    padding: 0.35rem 0.45rem;
+    padding: 0;
     border-radius: 6px;
     background: var(--pd-surface);
+    overflow: hidden;
+  }
+
+  .diag-hit {
+    display: block;
+    width: 100%;
+    margin: 0;
+    padding: 0.35rem 0.45rem;
+    border: none;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    font: inherit;
+    border-radius: inherit;
+  }
+
+  .diag-hit:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--pd-accent) 8%, transparent);
+  }
+
+  .diag-hit:disabled {
+    cursor: default;
   }
 
   li.error {
