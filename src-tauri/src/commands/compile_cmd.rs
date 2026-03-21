@@ -68,6 +68,7 @@ pub fn compile_project(
         &rel,
         state.typst_package_cache.clone(),
         overrides,
+        state.resource_fonts_dir.clone(),
     )
     .map_err(|e| e.to_string())?;
 
@@ -108,6 +109,7 @@ pub fn export_pdf_to_path(
         &rel,
         state.typst_package_cache.clone(),
         vec![],
+        state.resource_fonts_dir.clone(),
     )
     .map_err(|e| e.to_string())?;
 

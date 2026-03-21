@@ -63,6 +63,7 @@ impl PaperDeskWorld {
         main_relative: &str,
         package_cache: PathBuf,
         source_overrides: Vec<(String, String)>,
+        resource_fonts_dir: Option<PathBuf>,
     ) -> Result<Self, WorldCreationError> {
         let root = project_root.canonicalize().map_err(|err| match err.kind() {
             io::ErrorKind::NotFound => WorldCreationError::RootNotFound(project_root),
@@ -80,9 +81,20 @@ impl PaperDeskWorld {
 
         let library = Library::builder().with_inputs(Dict::default()).build();
 
+        let mut font_dirs: Vec<PathBuf> = Vec::new();
+        let project_fonts = root.join("fonts");
+        if project_fonts.is_dir() {
+            font_dirs.push(project_fonts);
+        }
+        if let Some(dir) = resource_fonts_dir {
+            if dir.is_dir() {
+                font_dirs.push(dir);
+            }
+        }
+
         let mut fonts = Fonts::searcher();
         fonts.include_system_fonts(true);
-        let fonts = fonts.search();
+        let fonts = fonts.search_with(font_dirs);
 
         let downloader = Downloader::new(concat!("paperdesk/", env!("CARGO_PKG_VERSION")));
         let package_storage = PackageStorage::new(Some(package_cache), None, downloader);

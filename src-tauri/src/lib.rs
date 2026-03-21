@@ -19,6 +19,8 @@ pub struct AppState {
     pub project_root: Mutex<Option<PathBuf>>,
     pub typst_package_cache: PathBuf,
     pub app_config_dir: PathBuf,
+    /// Bundled `resources/fonts` for Typst (`FontSearcher::search_with`), if present.
+    pub resource_fonts_dir: Option<PathBuf>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -37,10 +39,16 @@ pub fn run() {
             std::fs::create_dir_all(&app_config_dir)
                 .map_err(|e| format!("create config dir: {e}"))?;
 
+            let resource_fonts_dir = resolver
+                .resolve("fonts", tauri::path::BaseDirectory::Resource)
+                .ok()
+                .filter(|p| p.is_dir());
+
             app.manage(AppState {
                 project_root: Mutex::new(None),
                 typst_package_cache,
                 app_config_dir,
+                resource_fonts_dir,
             });
             Ok(())
         })
