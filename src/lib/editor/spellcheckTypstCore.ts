@@ -131,9 +131,23 @@ function lineLooksLikeTypstNamedArgList(line: string): boolean {
   return true;
 }
 
-function shouldSkipWord(fullText: string, from: number, to: number): boolean {
+/** `15th` → only `th` matches WORD; skip when it follows a digit (English ordinals). */
+function looksLikeEnglishOrdinalSuffix(fullText: string, from: number, to: number): boolean {
+  if (from < 1) return false;
+  const w = fullText.slice(from, to);
+  if (!/^(st|nd|rd|th)$/iu.test(w)) return false;
+  return /\d/u.test(fullText[from - 1]);
+}
+
+function shouldSkipWord(
+  fullText: string,
+  from: number,
+  to: number,
+  spellLang: "de" | "en",
+): boolean {
   const before = from > 0 ? fullText.charCodeAt(from - 1) : 0;
   if (before === 35 /* # */) return true;
+  if (spellLang === "en" && looksLikeEnglishOrdinalSuffix(fullText, from, to)) return true;
 
   const lineStart = fullText.lastIndexOf("\n", from - 1) + 1;
   let lineEnd = fullText.indexOf("\n", to);
@@ -274,7 +288,7 @@ export function runTypstSpellScanPlain(
     if (out.length >= MAX_DIAGNOSTICS) break;
     const from = m.index;
     const to = from + m[0].length;
-    if (shouldSkipWord(full, from, to)) continue;
+    if (shouldSkipWord(full, from, to, spellLang)) continue;
 
     const raw = m[0];
     if (wordAccepted(spell, raw, spellLang)) continue;
