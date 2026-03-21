@@ -94,7 +94,26 @@
     <span class="tree-title">Files</span>
     <span class="tree-actions">
       <button type="button" class="icon-btn" title="Neue Datei" onclick={() => onNewFile()}>+</button>
-      <button type="button" class="icon-btn" title="Neuer Ordner" onclick={() => onNewFolder()}>⊕</button>
+      <button type="button" class="icon-btn" title="Neuer Ordner" onclick={() => onNewFolder()}>
+        <svg
+          class="folder-add-icon"
+          viewBox="0 0 24 24"
+          width="15"
+          height="15"
+          aria-hidden="true"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="M12 10v6" />
+          <path d="M9 13h6" />
+          <path
+            d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"
+          />
+        </svg>
+      </button>
       <span class="move-wrap" title={moveButtonTooltip}>
         <button
           type="button"
@@ -236,6 +255,9 @@
   }
 
   .icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     min-width: 1.65rem;
     height: 1.65rem;
     padding: 0 0.35rem;
@@ -246,6 +268,15 @@
     font-size: 0.95rem;
     line-height: 1;
     cursor: pointer;
+  }
+
+  .folder-add-icon {
+    flex-shrink: 0;
+    opacity: 0.92;
+  }
+
+  .icon-btn:hover:not(:disabled) .folder-add-icon {
+    opacity: 1;
   }
 
   .icon-btn:hover:not(:disabled) {
