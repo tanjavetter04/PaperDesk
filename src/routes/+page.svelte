@@ -253,7 +253,8 @@
 
 <style>
   .hub {
-    max-width: 52rem;
+    /* 6 recent tiles (134px + 2×0.65rem) + 5×1rem gap + horizontal padding; small buffer */
+    max-width: calc(6 * (134px + 1.3rem) + 5 * 1rem + 2 * 1.5rem + 0.5rem);
     margin: 0 auto;
     padding: 3rem 1.5rem;
   }
