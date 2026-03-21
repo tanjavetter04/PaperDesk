@@ -40,6 +40,9 @@
             # Typst LSP + `tinymist preview` (live preview in PaperDesk)
             tinymist
 
+            # `xdg-open` for tooling; Tauri AppImage bundling also copies `/usr/bin/xdg-open` if present
+            xdg-utils
+
             nodejs_20
             pkg-config
             gobject-introspection
