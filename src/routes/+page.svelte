@@ -14,7 +14,7 @@
   let error = $state<string | null>(null);
   let selectedFolder = $state<string | null>(null);
 
-  const RECENT_HUB_LIMIT = 5;
+  const RECENT_HUB_LIMIT = 6;
 
   function normalizePath(p: string): string {
     return p.trim().replace(/\\/g, "/").replace(/\/+$/, "") || "/";
@@ -269,8 +269,9 @@
     list-style: none;
     margin: 0;
     padding: 0;
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(9.75rem, 1fr));
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
     gap: 0.85rem 1rem;
   }
 

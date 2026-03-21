@@ -70,15 +70,21 @@
   .recent-item {
     list-style: none;
     margin: 0;
+    min-width: 0;
   }
 
   .recent-card {
-    width: 100%;
+    --recent-pad-x: 0.65rem;
+    /* Inner row width matches fixed thumb (132px); + button border (1px each side). */
+    box-sizing: border-box;
+    width: calc(134px + 2 * var(--recent-pad-x));
+    max-width: 100%;
     display: flex;
     flex-direction: column;
     align-items: stretch;
     gap: 0.45rem;
-    padding: 0.55rem 0.6rem 0.6rem;
+    padding: 0.55rem var(--recent-pad-x) 0.6rem;
+    overflow: hidden;
     border-radius: 8px;
     border: 1px solid var(--pd-border);
     background: var(--pd-surface);
@@ -98,7 +104,9 @@
   }
 
   .recent-thumb {
-    width: 100%;
+    box-sizing: border-box;
+    width: 132px;
+    max-width: 100%;
     aspect-ratio: 3 / 4;
     max-height: 7.5rem;
     border-radius: 5px;
@@ -108,11 +116,14 @@
     align-items: center;
     justify-content: center;
     overflow: hidden;
+    align-self: center;
+    flex-shrink: 0;
   }
 
   .thumb-skel {
-    width: 40%;
-    height: 40%;
+    width: 100%;
+    height: 100%;
+    min-height: 4rem;
     border-radius: 6px;
     background: linear-gradient(
       110deg,
@@ -134,11 +145,11 @@
   }
 
   .thumb-img {
+    display: block;
     width: 100%;
     height: 100%;
     object-fit: contain;
     object-position: center top;
-    display: block;
   }
 
   .thumb-fallback {
@@ -153,12 +164,21 @@
     font-weight: 500;
     font-size: 0.9rem;
     line-height: 1.25;
+    width: 100%;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .recent-path {
     font-size: 0.72rem;
     color: var(--pd-muted);
-    word-break: break-all;
     line-height: 1.3;
+    width: 100%;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 </style>
