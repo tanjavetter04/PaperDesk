@@ -12,6 +12,8 @@
     compileProject,
     exportPdf,
     closeProject,
+    startTinymistPreview,
+    restartTinymistPreview,
   } from "$lib/tauri/api";
   import type { CompileDiagnostic, PreviewSource } from "$lib/tauri/api";
 
@@ -20,19 +22,15 @@
   let selectedPath = $state<string | null>(null);
   let buffer = $state("");
   let saveLabel = $state<"saved" | "dirty" | "saving">("saved");
-  let compileLabel = $state<"idle" | "running" | "ok" | "err">("idle");
+  let previewLabel = $state<"idle" | "starting" | "live" | "err">("idle");
   let diagnostics = $state<CompileDiagnostic[]>([]);
-  let pdfUrl = $state<string | null>(null);
-  let previewPage = $state(1);
-  /** UTF-8 byte offset of the cursor in the open buffer (for Typst forward sync). */
-  let cursorUtf8Offset = $state(0);
+  let previewUrl = $state<string | null>(null);
+  let previewError = $state<string | null>(null);
 
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
-  let compileTimer: ReturnType<typeof setTimeout> | null = null;
-  /** Monotonically increasing token so only the latest compile applies (stale responses are dropped). */
-  let compileGeneration = 0;
   /** `buffer` is only a safe preview overlay when it matches the open tab (see EditorPane onReady). */
   let editorBufferPath = $state<string | null>(null);
+  const LIVE_SAVE_DEBOUNCE_MS = 140;
 
   const PREVIEW_WIDTH_STORAGE = "paperdesk.previewWidthPx";
   const SIDEBAR_W = 220;
@@ -152,39 +150,56 @@
       }
       rootPath = open;
       await refreshFiles();
+      await ensurePreview();
     })();
     return () => {
       gone = true;
     };
   });
 
-  function revokePdf() {
-    if (pdfUrl) {
-      URL.revokeObjectURL(pdfUrl);
-      pdfUrl = null;
+  async function ensurePreview(restart = false) {
+    previewLabel = "starting";
+    previewError = null;
+    try {
+      previewUrl = restart
+        ? await restartTinymistPreview(null)
+        : await startTinymistPreview(null);
+      previewLabel = "live";
+    } catch (e) {
+      previewUrl = null;
+      previewLabel = "err";
+      previewError = String(e);
     }
   }
 
   onDestroy(() => {
     if (saveTimer) clearTimeout(saveTimer);
-    if (compileTimer) clearTimeout(compileTimer);
-    revokePdf();
   });
+
+  async function persistFile(path: string, text: string) {
+    saveLabel = "saving";
+    await writeTextFile(path, text);
+    if (path === "paperdesk.json") {
+      await ensurePreview(true);
+      await refreshFiles();
+    }
+    saveLabel = "saved";
+  }
 
   function scheduleSave() {
     if (!selectedPath) return;
     saveLabel = "dirty";
     if (saveTimer) clearTimeout(saveTimer);
     saveTimer = setTimeout(async () => {
-      if (!selectedPath) return;
-      saveLabel = "saving";
+      const path = selectedPath;
+      const text = buffer;
+      if (!path) return;
       try {
-        await writeTextFile(selectedPath, buffer);
-        saveLabel = "saved";
+        await persistFile(path, text);
       } catch {
         saveLabel = "dirty";
       }
-    }, 1200);
+    }, LIVE_SAVE_DEBOUNCE_MS);
   }
 
   function previewSourceForCompile(): PreviewSource | null {
@@ -192,86 +207,39 @@
     return {
       path: selectedPath,
       text: buffer,
-      cursor_byte_offset: cursorUtf8Offset,
     };
-  }
-
-  function scheduleCompile() {
-    if (compileTimer) clearTimeout(compileTimer);
-    compileLabel = "running";
-    const gen = ++compileGeneration;
-    compileTimer = setTimeout(async () => {
-      try {
-        const r = await compileProject(null, previewSourceForCompile());
-        if (gen !== compileGeneration) return;
-        diagnostics = r.diagnostics;
-        revokePdf();
-        if (r.ok && r.pdf_base64) {
-          const bytes = Uint8Array.from(atob(r.pdf_base64), (c) =>
-            c.charCodeAt(0),
-          );
-          pdfUrl = URL.createObjectURL(
-            new Blob([bytes], { type: "application/pdf" }),
-          );
-          if (r.preview_page != null) {
-            previewPage = r.preview_page;
-          }
-          compileLabel = "ok";
-        } else {
-          compileLabel = "err";
-        }
-        await refreshFiles();
-      } catch (e) {
-        if (gen !== compileGeneration) return;
-        compileLabel = "err";
-        diagnostics = [
-          {
-            severity: "error",
-            message: String(e),
-            path: null,
-            line: null,
-            column: null,
-          },
-        ];
-      }
-    }, 280);
   }
 
   function onEditorChange(text: string) {
     buffer = text;
     scheduleSave();
-    scheduleCompile();
   }
 
   async function selectFile(p: string) {
     if (p === selectedPath) return;
     if (saveTimer) clearTimeout(saveTimer);
     if (selectedPath) {
-      saveLabel = "saving";
       try {
-        await writeTextFile(selectedPath, buffer);
-        saveLabel = "saved";
+        await persistFile(selectedPath, buffer);
       } catch {
         saveLabel = "dirty";
       }
     }
     selectedPath = p;
     editorBufferPath = null;
-    previewPage = 1;
-    scheduleCompile();
+    diagnostics = [];
   }
 
   async function goHub() {
     if (saveTimer) clearTimeout(saveTimer);
     if (selectedPath) {
       try {
-        await writeTextFile(selectedPath, buffer);
+        await persistFile(selectedPath, buffer);
       } catch {
         /* keep going */
       }
     }
     await closeProject();
-    revokePdf();
     await goto("/");
   }
 
@@ -284,33 +252,11 @@
   }
 
   async function compileNow() {
-    if (compileTimer) clearTimeout(compileTimer);
-    compileGeneration += 1;
-    compileLabel = "running";
-    const gen = compileGeneration;
     try {
       const r = await compileProject(null, previewSourceForCompile());
-      if (gen !== compileGeneration) return;
       diagnostics = r.diagnostics;
-      revokePdf();
-      if (r.ok && r.pdf_base64) {
-        const bytes = Uint8Array.from(atob(r.pdf_base64), (c) =>
-          c.charCodeAt(0),
-        );
-        pdfUrl = URL.createObjectURL(
-          new Blob([bytes], { type: "application/pdf" }),
-        );
-        if (r.preview_page != null) {
-          previewPage = r.preview_page;
-        }
-        compileLabel = "ok";
-      } else {
-        compileLabel = "err";
-      }
       await refreshFiles();
     } catch (e) {
-      if (gen !== compileGeneration) return;
-      compileLabel = "err";
       diagnostics = [
         {
           severity: "error",
@@ -330,7 +276,7 @@
     <span class="proj" title={rootPath ?? ""}>{rootPath ?? ""}</span>
     <span class="status">
       <span class="pill" data-state={saveLabel}>{saveLabel}</span>
-      <span class="pill" data-state={compileLabel}>{compileLabel}</span>
+      <span class="pill" data-state={previewLabel}>{previewLabel}</span>
     </span>
     <span class="spacer"></span>
     <button type="button" class="action" onclick={compileNow}>Compile</button>
@@ -349,13 +295,9 @@
       <EditorPane
         path={selectedPath}
         onDocumentChange={onEditorChange}
-        onCursorActivity={(off) => {
-          cursorUtf8Offset = off;
-        }}
         onReady={(t, loadedPath) => {
           buffer = t;
           editorBufferPath = loadedPath;
-          scheduleCompile();
         }}
       />
       <DiagnosticsPanel {diagnostics} />
@@ -374,7 +316,7 @@
       onpointercancel={onSplitPointerUp}
     ></div>
     <aside class="preview-col">
-      <PreviewPane pdfUrl={pdfUrl} page={previewPage} />
+      <PreviewPane {previewUrl} error={previewError} />
     </aside>
   </div>
 </div>
@@ -441,8 +383,12 @@
     color: var(--pd-accent);
   }
 
-  .pill[data-state="ok"] {
+  .pill[data-state="live"] {
     color: #69db7c;
+  }
+
+  .pill[data-state="starting"] {
+    color: var(--pd-accent);
   }
 
   .pill[data-state="err"] {

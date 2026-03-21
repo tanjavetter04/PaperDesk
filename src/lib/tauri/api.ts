@@ -76,6 +76,18 @@ export async function compileProject(
   });
 }
 
+export async function startTinymistPreview(entry?: string | null): Promise<string> {
+  return invoke("start_tinymist_preview", {
+    entry: entry ?? null,
+  });
+}
+
+export async function restartTinymistPreview(entry?: string | null): Promise<string> {
+  return invoke("restart_tinymist_preview", {
+    entry: entry ?? null,
+  });
+}
+
 export async function exportPdf(entry?: string | null): Promise<void> {
   const path = await save({
     title: "Export PDF",

@@ -7,29 +7,31 @@
   pdfjs.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
   let {
-    pdfUrl,
+    previewUrl,
+    pdfUrl = null,
     page = 1,
+    error = null,
   }: {
-    pdfUrl: string | null;
+    previewUrl: string | null;
+    pdfUrl?: string | null;
     /** 1-based page for scroll sync (pdf.js). */
     page?: number;
+    error?: string | null;
   } = $props();
+
+  const showPdf = $derived(!previewUrl && !!pdfUrl);
 
   let slot = $state<HTMLDivElement | null>(null);
   let pagesRoot = $state<HTMLDivElement | null>(null);
 
   const safePage = $derived(Math.max(1, Math.floor(page)));
   let loadError = $state<string | null>(null);
-  /** Full pdf.js re-render generation (URL, settle after resize, etc.). */
   let layoutRev = $state(0);
-  /** Bumped after a full paint of all page canvases (for scroll sync). */
   let renderSerial = $state(0);
 
   let loaded = $state<{ doc: PDFDocumentProxy; url: string } | null>(null);
 
-  /** Last CSS width used when canvases were rendered (pdf.js). */
   let renderedAtWidth = $state(0);
-  /** Live width of the scroll viewport (ResizeObserver). */
   let frameClientWidth = $state(0);
 
   const displayScale = $derived.by(() => {
@@ -47,14 +49,13 @@
     return Math.max(0, root.offsetHeight * displayScale);
   });
 
-  /** For debounced settle callback (non-reactive read). */
   const renderedWidthRef = { current: 0 };
   $effect(() => {
     renderedWidthRef.current = renderedAtWidth;
   });
 
   $effect(() => {
-    const url = pdfUrl;
+    const url = showPdf ? pdfUrl : null;
     if (!url) {
       loadError = null;
       renderedAtWidth = 0;
@@ -109,6 +110,8 @@
   });
 
   $effect(() => {
+    if (!showPdf) return;
+
     const docEntry = loaded;
     const wrap = slot;
     const root = pagesRoot;
@@ -177,6 +180,8 @@
   });
 
   $effect(() => {
+    if (!showPdf) return;
+
     const wrap = slot;
     const p = safePage;
     const _rs = renderSerial;
@@ -189,9 +194,10 @@
     });
   });
 
-  /** Live width + debounced sharp re-render after resize settles (no pdf.js during drag). */
   const RESIZE_SETTLE_MS = 280;
   $effect(() => {
+    if (!showPdf) return;
+
     const wrap = slot;
     if (!wrap) return;
     let settleTimer = 0;
@@ -219,8 +225,17 @@
 
 <div class="preview">
   <div class="head">Preview</div>
-  <div class="frame-wrap" bind:this={slot}>
-    {#if pdfUrl}
+  <div class="frame-wrap" class:frame-wrap--scroll={showPdf} bind:this={slot}>
+    {#if previewUrl}
+      <iframe
+        class="preview-frame"
+        src={previewUrl}
+        title="Live Typst preview"
+      ></iframe>
+      {#if error}
+        <p class="err-overlay">{error}</p>
+      {/if}
+    {:else if pdfUrl}
       <div
         class="scale-viewport"
         style:min-height="{scaledContentHeight > 0 ? `${scaledContentHeight}px` : undefined}"
@@ -237,7 +252,7 @@
         <p class="err-overlay">{loadError}</p>
       {/if}
     {:else}
-      <p class="placeholder">Compile to see PDF preview</p>
+      <p class="placeholder">{error ?? "Starting live preview..."}</p>
     {/if}
   </div>
 </div>
@@ -268,7 +283,19 @@
     flex: 1;
     min-height: 0;
     position: relative;
+    overflow: hidden;
+    background: #525659;
+  }
+
+  .frame-wrap--scroll {
     overflow: auto;
+  }
+
+  .preview-frame {
+    width: 100%;
+    height: 100%;
+    display: block;
+    border: none;
     background: #525659;
   }
 
@@ -307,7 +334,7 @@
   .err-overlay {
     position: absolute;
     left: 50%;
-    top: 1rem;
+    top: 0.9rem;
     transform: translateX(-50%);
     max-width: 90%;
     margin: 0;

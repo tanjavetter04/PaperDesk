@@ -1,5 +1,6 @@
 mod commands;
 mod project;
+mod tinymist_preview;
 mod typst_engine;
 
 use std::path::PathBuf;
@@ -13,6 +14,7 @@ use commands::project::{
     add_recent_project, close_project, create_from_template, get_open_project, get_recent_projects,
     open_project,
 };
+use tinymist_preview::{restart_tinymist_preview, start_tinymist_preview, TinymistSession};
 
 /// Shared application state (current project + paths).
 pub struct AppState {
@@ -21,6 +23,9 @@ pub struct AppState {
     pub app_config_dir: PathBuf,
     /// Bundled `resources/fonts` for Typst (`FontSearcher::search_with`), if present.
     pub resource_fonts_dir: Option<PathBuf>,
+    /// `resources/bin/tinymist` from build.rs, when present (packaged app or after local build).
+    pub bundled_tinymist: Option<PathBuf>,
+    pub tinymist: Mutex<Option<TinymistSession>>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -44,11 +49,25 @@ pub fn run() {
                 .ok()
                 .filter(|p| p.is_dir());
 
+            let bundled_tinymist = {
+                let name = if cfg!(target_os = "windows") {
+                    "bin/tinymist.exe"
+                } else {
+                    "bin/tinymist"
+                };
+                resolver
+                    .resolve(name, tauri::path::BaseDirectory::Resource)
+                    .ok()
+                    .filter(|p| p.is_file())
+            };
+
             app.manage(AppState {
                 project_root: Mutex::new(None),
                 typst_package_cache,
                 app_config_dir,
                 resource_fonts_dir,
+                bundled_tinymist,
+                tinymist: Mutex::new(None),
             });
             Ok(())
         })
@@ -64,6 +83,8 @@ pub fn run() {
             compile_project,
             export_pdf_to_path,
             create_from_template,
+            start_tinymist_preview,
+            restart_tinymist_preview,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

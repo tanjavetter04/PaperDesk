@@ -11,6 +11,10 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+ureq = { version = "2", features = ["tls"] }
+flate2 = "1"
+tar = "0.4"
+zip = "2"
 
 [dependencies]
 tauri = { version = "2", features = [] }

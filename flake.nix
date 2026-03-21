@@ -37,6 +37,9 @@
             rust-analyzer
             cargo-tauri
 
+            # Typst LSP + `tinymist preview` (live preview in PaperDesk)
+            tinymist
+
             nodejs_20
             pkg-config
             gobject-introspection
