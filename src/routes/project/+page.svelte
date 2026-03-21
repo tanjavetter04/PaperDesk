@@ -712,6 +712,19 @@
     await refreshHistoryCommits();
   }
 
+  async function toggleHistoryPanel() {
+    if (historyPanelOpen) {
+      historyPanelOpen = false;
+      historyDiffOpen = false;
+      return;
+    }
+    await openHistoryPanel();
+  }
+
+  function toggleAiPanel() {
+    aiPanelOpen = !aiPanelOpen;
+  }
+
   async function handleHistorySnapshot() {
     try {
       await historyCheckpoint("manual", true);
@@ -1213,9 +1226,10 @@
     <button
       type="button"
       class="bar-icon-action"
-      onclick={() => (aiPanelOpen = true)}
+      onclick={toggleAiPanel}
       title={t("project.aiToolbar")}
       aria-label={t("project.aiToolbar")}
+      aria-pressed={aiPanelOpen}
     >
       <svg
         width="18"
@@ -1240,9 +1254,10 @@
     <button
       type="button"
       class="bar-icon-action"
-      onclick={() => void openHistoryPanel()}
+      onclick={() => void toggleHistoryPanel()}
       title={t("history.toolbar")}
       aria-label={t("history.toolbar")}
+      aria-pressed={historyPanelOpen}
     >
       <svg
         width="18"
