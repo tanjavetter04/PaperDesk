@@ -34,6 +34,10 @@
     compileDiagnosticsToCm,
   } from "$lib/editor/compileDiagnosticsCm";
   import { cursorPosFromTinymistEditorScroll } from "$lib/editor/sourceScrollCm";
+  import {
+    completionKeymap as typstCompletionKeymap,
+    typstAutocompleteBundle,
+  } from "$lib/editor/typstAutocomplete";
 
   let {
     path,
@@ -81,6 +85,7 @@
     onChange: (s: string) => void,
     onCursor: ((utf8: number) => void) | undefined,
     cmds: HostCommands | undefined,
+    typstFile: boolean,
   ) {
     return [
       lineNumbers(),
@@ -92,6 +97,7 @@
       crosshairCursor(),
       history(),
       markdown(),
+      ...(typstFile ? typstAutocompleteBundle() : []),
       search(),
       lintGutter(),
       Prec.high(
@@ -116,6 +122,7 @@
       ),
       keymap.of([
         ...searchKeymap,
+        ...(typstFile ? typstCompletionKeymap : []),
         ...defaultKeymap,
         ...historyKeymap,
         indentWithTab,
@@ -161,6 +168,7 @@
           (s) => onDocumentChange(s),
           onCursorActivity,
           hostCommands,
+          p.endsWith(".typ"),
         ),
       });
       view = new EditorView({ state, parent: el });
@@ -321,5 +329,142 @@
     color: var(--pd-text);
     border: 1px solid var(--pd-border);
     border-radius: 5px;
+  }
+
+  /* Typst autocomplete (CodeMirror tooltip lives under .cm-editor) */
+  .cm-host :global(.cm-tooltip.cm-tooltip-autocomplete.pd-cm-autocomplete) {
+    filter: drop-shadow(0 10px 28px rgb(0 0 0 / 0.28));
+    border: none;
+    background: transparent;
+    padding: 0;
+  }
+
+  .cm-host :global(.cm-tooltip.cm-tooltip-autocomplete.pd-cm-autocomplete > ul) {
+    font-family: var(--pd-mono);
+    font-size: 1.0625rem;
+    line-height: 1.42;
+    margin: 0;
+    padding: 6px 0;
+    min-width: min(20rem, 92vw);
+    max-width: min(28rem, 94vw);
+    max-height: min(18rem, 46vh);
+    overflow: hidden auto;
+    list-style: none;
+    background: var(--pd-surface);
+    color: var(--pd-text);
+    border: 1px solid var(--pd-border);
+    border-radius: 10px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--pd-border) transparent;
+  }
+
+  .cm-host :global(.cm-tooltip.cm-tooltip-autocomplete.pd-cm-autocomplete > ul > li[role="option"]) {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0 6px;
+    padding: 0.42rem 0.6rem;
+    border-radius: 7px;
+    cursor: pointer;
+  }
+
+  .cm-host :global(.cm-tooltip.cm-tooltip-autocomplete.pd-cm-autocomplete > ul > li[role="option"]:hover) {
+    background: color-mix(in srgb, var(--pd-muted) 12%, transparent);
+  }
+
+  .cm-host :global(.cm-tooltip.cm-tooltip-autocomplete.pd-cm-autocomplete ul > li[aria-selected]) {
+    background: color-mix(in srgb, var(--pd-accent) 26%, var(--pd-surface)) !important;
+    color: var(--pd-text) !important;
+  }
+
+  .cm-host :global(.pd-cm-completion-kind) {
+    flex-shrink: 0;
+    min-width: 1.45rem;
+    padding: 0.12rem 0.32rem;
+    border-radius: 4px;
+    font-family: var(--pd-font);
+    font-size: 0.6875rem;
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: 0.03em;
+    text-align: center;
+    text-transform: uppercase;
+    color: var(--pd-muted);
+    background: color-mix(in srgb, var(--pd-muted) 16%, var(--pd-bg));
+    border: 1px solid color-mix(in srgb, var(--pd-border) 70%, transparent);
+  }
+
+  .cm-host :global(.pd-cm-completion-kind[data-kind="keyword"]) {
+    color: color-mix(in srgb, var(--pd-accent) 88%, var(--pd-text));
+    background: color-mix(in srgb, var(--pd-accent) 18%, var(--pd-bg));
+    border-color: color-mix(in srgb, var(--pd-accent) 35%, var(--pd-border));
+  }
+
+  .cm-host :global(.pd-cm-completion-kind[data-kind="function"]) {
+    color: var(--pd-muted);
+    background: color-mix(in srgb, var(--pd-muted) 12%, var(--pd-bg));
+  }
+
+  .cm-host :global(.cm-tooltip.cm-tooltip-autocomplete.pd-cm-autocomplete .cm-completionLabel) {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .cm-host :global(.cm-tooltip.cm-tooltip-autocomplete.pd-cm-autocomplete .cm-completionLabel::before) {
+    content: "#";
+    font-weight: 500;
+    color: var(--pd-muted);
+    margin-right: 1px;
+  }
+
+  .cm-host :global(.cm-tooltip.cm-tooltip-autocomplete.pd-cm-autocomplete .cm-completionDetail) {
+    flex: 0 1 42%;
+    margin: 0;
+    min-width: 0;
+    font-family: var(--pd-font);
+    font-size: 0.9375rem;
+    font-style: normal;
+    font-weight: 400;
+    color: var(--pd-muted);
+    text-align: right;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .cm-host :global(.cm-tooltip.cm-tooltip-autocomplete.pd-cm-autocomplete .cm-completionMatchedText) {
+    text-decoration: none;
+    color: var(--pd-accent);
+    font-weight: 700;
+  }
+
+  .cm-host :global(.cm-tooltip.cm-tooltip-autocomplete.pd-cm-autocomplete completion-section) {
+    display: list-item;
+    list-style: none;
+    margin: 0.35rem 0 0.15rem;
+    padding: 0.38rem 0.9rem 0.22rem;
+    font-family: var(--pd-font);
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--pd-muted);
+    border-bottom: 1px solid var(--pd-border);
+    background: linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--pd-bg) 40%, var(--pd-surface)),
+      var(--pd-surface)
+    );
+    cursor: default;
+    pointer-events: none;
+  }
+
+  .cm-host :global(.cm-tooltip.cm-tooltip-autocomplete.pd-cm-autocomplete completion-section:first-child) {
+    margin-top: 0;
+    border-radius: 10px 10px 0 0;
   }
 </style>
