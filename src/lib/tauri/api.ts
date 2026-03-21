@@ -119,3 +119,7 @@ export async function createFromTemplate(
     targetDir,
   });
 }
+
+export async function createEmptyProject(targetDir: string): Promise<string> {
+  return invoke("create_empty_project", { targetDir });
+}

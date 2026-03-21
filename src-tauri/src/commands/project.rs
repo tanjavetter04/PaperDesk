@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use tauri::Manager;
 
+use crate::project::paths::MAIN_TYP;
 use crate::AppState;
 
 const RECENT_MAX: usize = 12;
@@ -87,6 +88,32 @@ pub fn close_project(state: tauri::State<'_, AppState>) -> Result<(), String> {
     Ok(())
 }
 
+fn prepare_new_project_dir(target_dir: &str) -> Result<PathBuf, String> {
+    let target = PathBuf::from(target_dir.trim());
+    if target.exists() {
+        let mut it = fs::read_dir(&target).map_err(|e| e.to_string())?;
+        if it.next().is_some() {
+            return Err("target folder must be empty".into());
+        }
+    } else {
+        fs::create_dir_all(&target).map_err(|e| e.to_string())?;
+    }
+    target
+        .canonicalize()
+        .map_err(|e| format!("could not canonicalize target: {e}"))
+}
+
+fn activate_new_project(state: &AppState, target: PathBuf) -> Result<String, String> {
+    *state.project_root.lock().map_err(|e| e.to_string())? = Some(target.clone());
+    let s = target.to_string_lossy().to_string();
+    let mut paths = load_recent(&state);
+    paths.retain(|p| p != &s);
+    paths.insert(0, s.clone());
+    paths.truncate(RECENT_MAX);
+    save_recent(&state, paths)?;
+    Ok(s)
+}
+
 fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
     fs::create_dir_all(dst)?;
     for entry in fs::read_dir(src)? {
@@ -106,7 +133,7 @@ fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-/// `template_id`: `article` or `thesis`. `target_dir` is the new project folder (created if missing; must be empty if exists).
+/// `template_id` must be `thesis`. `target_dir` is the new project folder (created if missing; must be empty if exists).
 #[tauri::command]
 pub fn create_from_template(
     app: tauri::AppHandle,
@@ -114,18 +141,10 @@ pub fn create_from_template(
     template_id: String,
     target_dir: String,
 ) -> Result<String, String> {
-    let target = PathBuf::from(target_dir.trim());
-    if target.exists() {
-        let mut it = fs::read_dir(&target).map_err(|e| e.to_string())?;
-        if it.next().is_some() {
-            return Err("target folder must be empty".into());
-        }
-    } else {
-        fs::create_dir_all(&target).map_err(|e| e.to_string())?;
+    if template_id.trim() != "thesis" {
+        return Err("unknown template (only thesis is available)".into());
     }
-    let target = target
-        .canonicalize()
-        .map_err(|e| format!("could not canonicalize target: {e}"))?;
+    let target = prepare_new_project_dir(&target_dir)?;
 
     let rel = format!("templates/{template_id}");
     let src = app
@@ -138,14 +157,18 @@ pub fn create_from_template(
 
     copy_dir_all(&src, &target).map_err(|e| format!("failed to copy template: {e}"))?;
 
-    *state.project_root.lock().map_err(|e| e.to_string())? = Some(target.clone());
-    let s = target.to_string_lossy().to_string();
-    let mut paths = load_recent(&state);
-    paths.retain(|p| p != &s);
-    paths.insert(0, s.clone());
-    paths.truncate(RECENT_MAX);
-    save_recent(&state, paths)?;
+    activate_new_project(&state, target)
+}
 
-    Ok(s)
+/// Empty project: only `main.typ` (empty file). `target_dir` rules match [`create_from_template`].
+#[tauri::command]
+pub fn create_empty_project(
+    state: tauri::State<'_, AppState>,
+    target_dir: String,
+) -> Result<String, String> {
+    let target = prepare_new_project_dir(&target_dir)?;
+    let main_path = target.join(MAIN_TYP);
+    fs::write(&main_path, []).map_err(|e| format!("failed to write {MAIN_TYP}: {e}"))?;
+    activate_new_project(&state, target)
 }
 

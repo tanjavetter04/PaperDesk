@@ -11,8 +11,8 @@ use tauri::Manager;
 use commands::compile_cmd::{compile_project, compile_project_at_path, export_pdf_to_path};
 use commands::fs::{list_project_files, read_text_file, write_text_file};
 use commands::project::{
-    add_recent_project, close_project, create_from_template, get_open_project, get_recent_projects,
-    open_project,
+    add_recent_project, close_project, create_empty_project, create_from_template, get_open_project,
+    get_recent_projects, open_project,
 };
 use tinymist_preview::{restart_tinymist_preview, start_tinymist_preview, TinymistSession};
 
@@ -84,6 +84,7 @@ pub fn run() {
             compile_project_at_path,
             export_pdf_to_path,
             create_from_template,
+            create_empty_project,
             start_tinymist_preview,
             restart_tinymist_preview,
         ])

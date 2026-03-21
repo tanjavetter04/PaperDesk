@@ -6,6 +6,7 @@
     openProject,
     pickProjectFolder,
     createFromTemplate,
+    createEmptyProject,
   } from "$lib/tauri/api";
   import RecentProjectRow from "$lib/components/RecentProjectRow.svelte";
 
@@ -118,13 +119,28 @@
     }
   }
 
-  async function newFromTemplate(id: "article" | "thesis") {
+  async function newFromThesisTemplate() {
     error = null;
     busy = true;
     try {
       const p = await pickProjectFolder();
       if (!p) return;
-      await createFromTemplate(id, p);
+      await createFromTemplate("thesis", p);
+      await goto("/project");
+    } catch (e) {
+      error = String(e);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function newEmptyProject() {
+    error = null;
+    busy = true;
+    try {
+      const p = await pickProjectFolder();
+      if (!p) return;
+      await createEmptyProject(p);
       await goto("/project");
     } catch (e) {
       error = String(e);
@@ -149,12 +165,12 @@
       Open project folder
     </button>
     <div class="templates">
-      <span class="label">New from template</span>
-      <button type="button" disabled={busy} onclick={() => newFromTemplate("article")}>
-        Article
+      <span class="label">New project</span>
+      <button type="button" disabled={busy} onclick={newFromThesisTemplate}>
+        Thesis template
       </button>
-      <button type="button" disabled={busy} onclick={() => newFromTemplate("thesis")}>
-        Thesis
+      <button type="button" disabled={busy} onclick={newEmptyProject}>
+        Empty project
       </button>
     </div>
   </section>
