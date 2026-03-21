@@ -1,0 +1,46 @@
+:root {
+  --pd-bg: #1a1b1e;
+  --pd-surface: #25262b;
+  --pd-border: #373a40;
+  --pd-text: #e9ecef;
+  --pd-muted: #868e96;
+  --pd-accent: #4dabf7;
+  --pd-error: #ff6b6b;
+  --pd-warning: #fcc419;
+  --pd-font: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --pd-mono: "IBM Plex Mono", "Consolas", monospace;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  font-family: var(--pd-font);
+  background: var(--pd-bg);
+  color: var(--pd-text);
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--pd-accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+code {
+  font-family: var(--pd-mono);
+}

@@ -1,0 +1,145 @@
+mod noop_progress;
+mod world;
+
+pub use world::PaperDeskWorld;
+
+use chrono::{Datelike, Local, Timelike};
+use typst::{World, WorldExt};
+use typst::diag::{Severity, SourceDiagnostic, Warned};
+use typst::foundations::Datetime;
+use typst::layout::PagedDocument;
+use typst_pdf::{PdfOptions, PdfStandards, Timestamp};
+use typst_ide::jump_from_cursor;
+
+/// Serializable compile diagnostic for the UI.
+#[derive(serde::Serialize, Clone, Debug)]
+pub struct CompileDiagnostic {
+    pub severity: String,
+    pub message: String,
+    pub path: Option<String>,
+    pub line: Option<u32>,
+    pub column: Option<u32>,
+}
+
+#[derive(serde::Serialize, Debug)]
+pub struct CompileOutcome {
+    pub ok: bool,
+    pub pdf_base64: Option<String>,
+    pub diagnostics: Vec<CompileDiagnostic>,
+    /// 1-based PDF page for the preview cursor, when resolved.
+    pub preview_page: Option<u32>,
+}
+
+fn diagnostic_to_dto(world: &PaperDeskWorld, diag: &SourceDiagnostic) -> CompileDiagnostic {
+    let (path, line, column) = if let Some(id) = diag.span.id() {
+        let path = id
+            .vpath()
+            .resolve(world.root())
+            .map(|p| p.to_string_lossy().into_owned());
+        let (line, column) = world
+            .range(diag.span)
+            .and_then(|range| {
+                world
+                    .source(id)
+                    .ok()?
+                    .lines()
+                    .byte_to_line_column(range.start)
+            })
+            .map(|(l, c)| (Some((l + 1) as u32), Some((c + 1) as u32)))
+            .unwrap_or((None, None));
+        (path, line, column)
+    } else {
+        (None, None, None)
+    };
+
+    CompileDiagnostic {
+        severity: match diag.severity {
+            Severity::Error => "error".into(),
+            Severity::Warning => "warning".into(),
+        },
+        message: diag.message.to_string(),
+        path,
+        line,
+        column,
+    }
+}
+
+fn pdf_timestamp() -> Option<Timestamp> {
+    let local = Local::now();
+    let dt = Datetime::from_ymd_hms(
+        local.year(),
+        local.month().try_into().ok()?,
+        local.day().try_into().ok()?,
+        local.hour().try_into().ok()?,
+        local.minute().try_into().ok()?,
+        local.second().try_into().ok()?,
+    )?;
+    Timestamp::new_local(dt, local.offset().local_minus_utc() / 60)
+}
+
+fn preview_page_for_cursor(
+    world: &PaperDeskWorld,
+    document: &PagedDocument,
+    relative_path: &str,
+    byte_offset: usize,
+) -> Option<u32> {
+    let id = world.file_id_for_relative_path(relative_path).ok()?;
+    let source = world.source(id).ok()?;
+    let len = source.text().len();
+    let base = byte_offset.min(len);
+    // `jump_from_cursor` only hits Text/MathText leaves; nudge backward over markup/whitespace.
+    for delta in 0..=96_u32 {
+        let off = base.saturating_sub(delta as usize);
+        if let Some(p) = jump_from_cursor(document, &source, off).first() {
+            return Some(p.page.get() as u32);
+        }
+    }
+    None
+}
+
+/// Compile the project entry point to PDF. Resets world caches first.
+///
+/// `preview_jump`: project-relative path and UTF-8 cursor offset in that source (editor buffer).
+pub fn compile_to_pdf(
+    world: &mut PaperDeskWorld,
+    preview_jump: Option<(&str, usize)>,
+) -> Result<(Vec<u8>, Vec<CompileDiagnostic>, Option<u32>), Vec<CompileDiagnostic>> {
+    world.reset();
+
+    let Warned { output, warnings } = typst::compile::<PagedDocument>(world);
+
+    let mut diagnostics: Vec<_> = warnings
+        .iter()
+        .map(|w| diagnostic_to_dto(world, w))
+        .collect();
+
+    let document = match output {
+        Ok(doc) => doc,
+        Err(errs) => {
+            for e in errs.iter() {
+                diagnostics.push(diagnostic_to_dto(world, e));
+            }
+            return Err(diagnostics);
+        }
+    };
+
+    let preview_page = preview_jump.and_then(|(path, off)| {
+        preview_page_for_cursor(world, &document, path, off)
+    });
+
+    let options = PdfOptions {
+        timestamp: pdf_timestamp(),
+        standards: PdfStandards::default(),
+        ..PdfOptions::default()
+    };
+
+    match typst_pdf::pdf(&document, &options) {
+        Ok(pdf) => Ok((pdf, diagnostics, preview_page)),
+        Err(errs) => {
+            for e in errs.iter() {
+                diagnostics.push(diagnostic_to_dto(world, e));
+            }
+            Err(diagnostics)
+        }
+    }
+}
