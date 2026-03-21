@@ -7,7 +7,9 @@ function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
     !(window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__
   ) {
     return Promise.reject(
-      new Error("Tauri backend unavailable. Start the app with `tauri dev`."),
+      new Error(
+        "Tauri backend unavailable. Ensure the app is running in a Tauri context.",
+      ),
     );
   }
   return tauriInvoke<T>(cmd, args);
