@@ -1,5 +1,8 @@
 #set document(title: [Thesis Title], author: "Your Name")
 
+// Zotero: export a .bib into this folder with Better BibTeX (“Keep updated”), e.g.:
+// #bibliography("literatur.bib")
+
 = Thesis Title
 
 #align(center)[

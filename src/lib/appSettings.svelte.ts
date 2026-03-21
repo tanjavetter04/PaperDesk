@@ -3,6 +3,8 @@ export type ThemeMode = "dark" | "light";
 const K_THEME = "paperdesk.theme";
 const K_FONT = "paperdesk.fontSizePx";
 const K_DIR = "paperdesk.defaultProjectDir";
+const K_BIB = "paperdesk.zoteroBibRelativePath";
+const DEFAULT_BIB_REL = "literatur.bib";
 
 function readTheme(): ThemeMode {
   if (typeof localStorage === "undefined") return "dark";
@@ -23,10 +25,20 @@ function readDefaultDir(): string {
   return localStorage.getItem(K_DIR) ?? "";
 }
 
+function readZoteroBibRelativePath(): string {
+  if (typeof localStorage === "undefined") return DEFAULT_BIB_REL;
+  const raw = localStorage.getItem(K_BIB)?.trim();
+  if (!raw) return DEFAULT_BIB_REL;
+  const n = raw.replace(/\\/g, "/");
+  if (n.startsWith("/") || n.includes("..")) return DEFAULT_BIB_REL;
+  return n;
+}
+
 export const appSettings = $state({
   theme: readTheme(),
   fontSizePx: readFontSize(),
   defaultProjectDir: readDefaultDir(),
+  zoteroBibRelativePath: readZoteroBibRelativePath(),
 });
 
 export function applyAppearance() {
@@ -69,4 +81,16 @@ export function clearDefaultProjectDir() {
   if (typeof localStorage !== "undefined") {
     localStorage.removeItem(K_DIR);
   }
+}
+
+/** Relative path under project root; invalid input falls back to default. */
+export function setZoteroBibRelativePath(path: string): string {
+  const t = path.trim().replace(/\\/g, "/");
+  const next =
+    !t || t.startsWith("/") || t.includes("..") ? DEFAULT_BIB_REL : t;
+  appSettings.zoteroBibRelativePath = next;
+  if (typeof localStorage !== "undefined") {
+    localStorage.setItem(K_BIB, next);
+  }
+  return next;
 }

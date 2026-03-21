@@ -5,11 +5,16 @@
     open,
     message,
     title,
+    secondaryLabel,
+    onSecondary,
     onClose,
   }: {
     open: boolean;
     message: string;
     title?: string;
+    /** Optional second action (e.g. reload from disk). */
+    secondaryLabel?: string;
+    onSecondary?: () => void;
     onClose: () => void;
   } = $props();
 
@@ -26,6 +31,18 @@
     <h2 id="msg-modal-title">{resolvedTitle}</h2>
     <p class="body">{message}</p>
     <div class="btns">
+      {#if secondaryLabel && onSecondary}
+        <button
+          type="button"
+          class="secondary"
+          onclick={() => {
+            onSecondary();
+            onClose();
+          }}
+        >
+          {secondaryLabel}
+        </button>
+      {/if}
       <button type="button" class="primary" onclick={onClose}>
         {t("common.ok")}
       </button>
@@ -75,6 +92,22 @@
   .btns {
     display: flex;
     justify-content: flex-end;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+
+  .secondary {
+    padding: 0.4rem 0.85rem;
+    border-radius: 6px;
+    border: 1px solid var(--pd-border);
+    background: var(--pd-bg);
+    color: var(--pd-text);
+    cursor: pointer;
+    font-size: 1rem;
+  }
+
+  .secondary:hover {
+    border-color: var(--pd-muted);
   }
 
   .primary {

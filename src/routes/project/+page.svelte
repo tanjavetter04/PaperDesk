@@ -28,6 +28,7 @@
     historyListCommits,
     historyDiffWorkdir,
     historyRestore,
+    restartBibWatcher,
   } from "$lib/tauri/api";
   import type {
     CompileDiagnostic,
@@ -37,6 +38,7 @@
     PreviewSource,
     ProjectEntry,
   } from "$lib/tauri/api";
+  import { appSettings } from "$lib/appSettings.svelte";
   import { t } from "$lib/i18n/locale.svelte";
   import { openSettingsModal } from "$lib/settingsModal.svelte";
 
@@ -62,6 +64,9 @@
   let newFolderModalOpen = $state(false);
   let messageModalOpen = $state(false);
   let messageModalText = $state("");
+  let bibConflictModalOpen = $state(false);
+  /** Bump to force EditorPane to re-read the current `selectedPath` from disk. */
+  let reloadFromDiskTick = $state(0);
 
   let historyStatus = $state<HistoryStatus | null>(null);
   let historyPromptEnableOpen = $state(false);
@@ -79,6 +84,7 @@
   let historyIdleTimer: ReturnType<typeof setTimeout> | null = null;
 
   const HISTORY_IDLE_MS = 10_000;
+  let bibTinymistTimer: ReturnType<typeof setTimeout> | null = null;
 
   const editorHostCommands: {
     save: () => void | Promise<void>;
@@ -279,12 +285,39 @@
     firePreviewScroll(p.line0, p.column0);
   }
 
+  function scheduleBibTinymistRestart() {
+    if (bibTinymistTimer) clearTimeout(bibTinymistTimer);
+    bibTinymistTimer = setTimeout(() => {
+      bibTinymistTimer = null;
+      void ensurePreview(true);
+    }, 450);
+  }
+
+  async function handleBibExternallyUpdated(relPath: string) {
+    await refreshFiles();
+    void refreshDiagnostics();
+    scheduleBibTinymistRestart();
+    if (selectedPath !== relPath) return;
+    if (saveLabel !== "saved") {
+      bibConflictModalOpen = true;
+      return;
+    }
+    reloadFromDiskTick += 1;
+  }
+
   onMount(() => {
     let unlistenPreview: (() => void) | undefined;
+    let unlistenBib: (() => void) | undefined;
     void listen<PreviewScrollToSource>("preview-scroll-to-source", (e) => {
       handlePreviewScrollToSource(e.payload);
     }).then((fn) => {
       unlistenPreview = fn;
+    });
+    void listen<{ relativePath: string }>("bib-externally-updated", (e) => {
+      const p = e.payload?.relativePath?.trim().replace(/\\/g, "/");
+      if (p) void handleBibExternallyUpdated(p);
+    }).then((fn) => {
+      unlistenBib = fn;
     });
 
     if (typeof localStorage !== "undefined") {
@@ -349,6 +382,7 @@
       window.removeEventListener("blur", clearPreviewSplitIfStuck);
       document.removeEventListener("visibilitychange", onVisibilityForSplit);
       unlistenPreview?.();
+      unlistenBib?.();
       editorHostCommands.save = () => {};
       editorHostCommands.compile = () => {};
     };
@@ -691,6 +725,12 @@
       rootPath = open;
       await Promise.all([refreshFiles(), ensurePreview()]);
       await syncHistoryStatus(true);
+      if (gone) return;
+      try {
+        await restartBibWatcher(appSettings.zoteroBibRelativePath);
+      } catch {
+        /* ignore */
+      }
     })();
     return () => {
       gone = true;
@@ -722,6 +762,7 @@
     if (saveTimer) clearTimeout(saveTimer);
     if (diagnosticsTimer) clearTimeout(diagnosticsTimer);
     clearHistoryIdleTimer();
+    if (bibTinymistTimer) clearTimeout(bibTinymistTimer);
   });
 
   async function persistFile(path: string, text: string) {
@@ -970,6 +1011,7 @@
       <EditorPane
         path={selectedPath}
         reloadTick={editorReloadTick}
+        reloadFromDiskTick={reloadFromDiskTick}
         hostCommands={editorHostCommands}
         onDocumentChange={onEditorChange}
         onReady={onEditorReady}
@@ -1096,6 +1138,21 @@
     onRequestDiff={(id) => void handleHistoryDiff(id)}
     onCloseDiff={() => (historyDiffOpen = false)}
     onRestore={(id) => (historyRestoreCommitId = id)}
+  />
+
+  <MessageModal
+    open={bibConflictModalOpen}
+    message={t("project.bibExternalChange")}
+    secondaryLabel={t("project.bibReloadFromDisk")}
+    onSecondary={() => {
+      if (saveTimer) {
+        clearTimeout(saveTimer);
+        saveTimer = null;
+      }
+      saveLabel = "saved";
+      reloadFromDiskTick += 1;
+    }}
+    onClose={() => (bibConflictModalOpen = false)}
   />
 </div>
 

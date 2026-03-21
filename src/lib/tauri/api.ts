@@ -201,3 +201,8 @@ export async function historyRestore(
 ): Promise<void> {
   return invoke("history_restore", { commitId, paths: paths ?? null });
 }
+
+/** (Re)start watching the Zotero / Better BibTeX `.bib` path under the open project. */
+export async function restartBibWatcher(relativePath: string): Promise<void> {
+  return invoke("restart_bib_watcher", { relativePath });
+}

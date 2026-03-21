@@ -5,11 +5,12 @@
     setDefaultProjectDir,
     setFontSizePx,
     setTheme,
+    setZoteroBibRelativePath,
     type ThemeMode,
   } from "$lib/appSettings.svelte";
   import { locale, setLocale, t } from "$lib/i18n/locale.svelte";
   import type { Locale } from "$lib/i18n/messages";
-  import { pickProjectFolder } from "$lib/tauri/api";
+  import { pickProjectFolder, restartBibWatcher } from "$lib/tauri/api";
 
   let {
     open,
@@ -58,6 +59,22 @@
       defaultPath: appSettings.defaultProjectDir.trim() || undefined,
     });
     if (p) setDefaultProjectDir(p);
+  }
+
+  let bibDraft = $state(appSettings.zoteroBibRelativePath);
+
+  $effect(() => {
+    if (open) bibDraft = appSettings.zoteroBibRelativePath;
+  });
+
+  async function applyBibPath() {
+    const next = setZoteroBibRelativePath(bibDraft);
+    bibDraft = next;
+    try {
+      await restartBibWatcher(next);
+    } catch {
+      /* no project open or watcher failed — ignore */
+    }
   }
 </script>
 
@@ -182,6 +199,21 @@
         <span class="range-value">{appSettings.fontSizePx}px</span>
       </div>
     </label>
+    <label class="field">
+      <span class="field-label">{t("settings.zoteroBibPath")}</span>
+      <input
+        type="text"
+        class="text-input"
+        spellcheck="false"
+        autocomplete="off"
+        bind:value={bibDraft}
+        onblur={() => void applyBibPath()}
+        onkeydown={(e) => {
+          if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur();
+        }}
+      />
+      <p class="hint">{t("settings.zoteroBibHint")}</p>
+    </label>
     <div class="field">
       <span class="field-label">{t("settings.defaultProjectFolder")}</span>
       <p
@@ -257,6 +289,30 @@
 
   .field-label {
     display: block;
+  }
+
+  .text-input {
+    box-sizing: border-box;
+    width: 100%;
+    padding: 0.45rem 0.55rem;
+    border-radius: 6px;
+    border: 1px solid var(--pd-border);
+    background: var(--pd-bg);
+    color: var(--pd-text);
+    font-size: 0.95rem;
+    font-family: var(--pd-mono), monospace;
+  }
+
+  .text-input:focus {
+    outline: 2px solid color-mix(in srgb, var(--pd-accent) 45%, transparent);
+    outline-offset: 1px;
+  }
+
+  .hint {
+    margin: 0;
+    font-size: 0.82rem;
+    line-height: 1.4;
+    color: var(--pd-muted);
   }
 
   .path-preview {

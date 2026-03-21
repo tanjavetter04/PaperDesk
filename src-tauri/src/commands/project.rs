@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use tauri::Manager;
 
+use crate::bib_watch;
 use crate::project::paths::MAIN_TYP;
 use crate::tinymist_preview;
 use crate::AppState;
@@ -93,6 +94,7 @@ pub fn close_project(state: tauri::State<'_, AppState>) -> Result<(), String> {
     if let Some(ref r) = root {
         let _ = crate::project::history::try_checkpoint(&state, r, "paperdesk: close", false);
     }
+    bib_watch::stop(&state);
     tinymist_preview::stop(&state)?;
     *state.project_root.lock().map_err(|e| e.to_string())? = None;
     Ok(())

@@ -39,6 +39,8 @@
     path,
     /** Bump to force a re-read from disk for the same `path` (e.g. after history restore). */
     reloadTick = 0,
+    /** Increment to reload the open file from disk when the path is unchanged (e.g. external .bib sync). */
+    reloadFromDiskTick = 0,
     onDocumentChange,
     onReady,
     onCursorActivity,
@@ -49,6 +51,7 @@
   }: {
     path: string | null;
     reloadTick?: number;
+    reloadFromDiskTick?: number;
     hostCommands?: HostCommands;
     onDocumentChange: (text: string) => void;
     /** Fires after `path` was read from disk and the editor instance is created. */
@@ -136,6 +139,7 @@
     const el = host;
     const p = path;
     void reloadTick;
+    void reloadFromDiskTick;
     if (!el) return;
 
     if (!p) {

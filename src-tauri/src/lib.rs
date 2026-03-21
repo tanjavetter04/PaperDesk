@@ -1,3 +1,4 @@
+mod bib_watch;
 mod commands;
 mod project;
 mod tinymist_preview;
@@ -21,6 +22,7 @@ use commands::project::{
     add_recent_project, close_project, create_empty_project, create_from_template, get_open_project,
     get_recent_projects, open_project,
 };
+use bib_watch::restart_bib_watcher;
 use tinymist_preview::{restart_tinymist_preview, start_tinymist_preview, TinymistSession};
 
 /// Shared application state (current project + paths).
@@ -37,6 +39,7 @@ pub struct AppState {
     pub history_dirty: AtomicBool,
     /// Serialize Git history operations (commit / restore).
     pub history_git_lock: Mutex<()>,
+    pub bib_watch: Mutex<Option<bib_watch::BibWatchSession>>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -80,6 +83,7 @@ pub fn run() {
                 tinymist: Mutex::new(None),
                 history_dirty: AtomicBool::new(false),
                 history_git_lock: Mutex::new(()),
+                bib_watch: Mutex::new(None),
             });
             Ok(())
         })
@@ -108,6 +112,7 @@ pub fn run() {
             history_list_commits,
             history_diff_workdir,
             history_restore,
+            restart_bib_watcher,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

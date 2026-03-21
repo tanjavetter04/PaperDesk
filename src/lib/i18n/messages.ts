@@ -17,6 +17,10 @@ export const messageKeys = [
   "settings.chooseDefaultFolder",
   "settings.clearDefaultFolder",
   "settings.defaultFolderNone",
+  "settings.zoteroBibPath",
+  "settings.zoteroBibHint",
+  "project.bibExternalChange",
+  "project.bibReloadFromDisk",
   "hub.openProjectFolder",
   "hub.newProject",
   "hub.thesisTemplate",
@@ -104,6 +108,13 @@ const de: Table = {
   "settings.chooseDefaultFolder": "Ordner wählen…",
   "settings.clearDefaultFolder": "Zurücksetzen",
   "settings.defaultFolderNone": "Keiner (Systemstandard)",
+  "settings.zoteroBibPath":
+    "Zotero-Bibliographie (relativer Pfad im Projekt)",
+  "settings.zoteroBibHint":
+    "Zotero: Better BibTeX installieren, Export ins Projekt (z. B. literatur.bib) und „Keep updated“ aktivieren. PaperDesk beobachtet diese Datei und aktualisiert Vorschau und Diagnose.",
+  "project.bibExternalChange":
+    "Die Bibliographie-Datei wurde außerhalb von PaperDesk geändert (z. B. durch Zotero). Deine ungespeicherten Änderungen in diesem Tab gehen verloren, wenn du neu lädst.",
+  "project.bibReloadFromDisk": "Neu laden",
   "hub.openProjectFolder": "Projektordner öffnen",
   "hub.newProject": "Neues Projekt",
   "hub.thesisTemplate": "Vorlage Abschlussarbeit",
@@ -191,6 +202,12 @@ const en: Table = {
   "settings.chooseDefaultFolder": "Choose folder…",
   "settings.clearDefaultFolder": "Clear",
   "settings.defaultFolderNone": "None (system default)",
+  "settings.zoteroBibPath": "Zotero bibliography (relative path in project)",
+  "settings.zoteroBibHint":
+    "In Zotero: install Better BibTeX, export into the project (e.g. literatur.bib), and enable “Keep updated”. PaperDesk watches this file and refreshes preview and diagnostics.",
+  "project.bibExternalChange":
+    "The bibliography file was changed outside PaperDesk (e.g. by Zotero). Reloading will discard your unsaved edits in this tab.",
+  "project.bibReloadFromDisk": "Reload from disk",
   "hub.openProjectFolder": "Open project folder",
   "hub.newProject": "New project",
   "hub.thesisTemplate": "Thesis template",
