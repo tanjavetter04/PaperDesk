@@ -100,6 +100,9 @@
   let diagnosticsTimer: ReturnType<typeof setTimeout> | null = null;
   let previewSourceScrollTimer: ReturnType<typeof setTimeout> | null = null;
   let historyIdleTimer: ReturnType<typeof setTimeout> | null = null;
+  let lastPreviewSourceScroll:
+    | { relativePath: string; line0: number; character: number }
+    | null = null;
 
   const HISTORY_IDLE_MS = 10_000;
   let bibTinymistTimer: ReturnType<typeof setTimeout> | null = null;
@@ -947,6 +950,7 @@
     const hadUrl = previewUrl !== null;
     if (restart || !hadUrl) {
       previewLabel = "starting";
+      lastPreviewSourceScroll = null;
     }
     try {
       const url = restart
@@ -954,10 +958,12 @@
         : await startTinymistPreview();
       if (previewUrl !== url) {
         previewUrl = url;
+        lastPreviewSourceScroll = null;
       }
       previewLabel = "live";
     } catch (e) {
       previewUrl = null;
+      lastPreviewSourceScroll = null;
       previewLabel = "err";
       previewError = String(e);
     }
@@ -1017,17 +1023,35 @@
     }, DIAGNOSTICS_DEBOUNCE_MS);
   }
 
-  function schedulePreviewSourceScroll(line0: number, character: number) {
+  function schedulePreviewSourceScroll(pos: {
+    line0: number;
+    character: number;
+    reason: "cursor" | "edit";
+  }) {
     if (!selectedPath?.endsWith(".typ")) return;
     if (!previewUrl) return;
     if (splitDragging) return;
     const rel = selectedPath;
+    const last = lastPreviewSourceScroll;
+    const samePath = last?.relativePath === rel;
+    const sameLine = samePath && last?.line0 === pos.line0;
+    const samePos = sameLine && last?.character === pos.character;
+    if (samePos) return;
+    // Typing on the same source line re-triggers tinymist's marker animation without
+    // meaningfully changing the visible target, so only resync on actual line changes.
+    if (pos.reason === "edit" && sameLine) return;
     if (previewSourceScrollTimer) clearTimeout(previewSourceScrollTimer);
+    const delay = pos.reason === "cursor" ? 0 : PREVIEW_SOURCE_SCROLL_DEBOUNCE_MS;
     previewSourceScrollTimer = setTimeout(() => {
       previewSourceScrollTimer = null;
       if (selectedPath !== rel) return;
-      void tinymistPanelScrollToSource(rel, line0, character).catch(() => {});
-    }, PREVIEW_SOURCE_SCROLL_DEBOUNCE_MS);
+      lastPreviewSourceScroll = {
+        relativePath: rel,
+        line0: pos.line0,
+        character: pos.character,
+      };
+      void tinymistPanelScrollToSource(rel, pos.line0, pos.character).catch(() => {});
+    }, delay);
   }
 
   async function refreshDiagnostics() {
@@ -1074,6 +1098,7 @@
       clearTimeout(previewSourceScrollTimer);
       previewSourceScrollTimer = null;
     }
+    lastPreviewSourceScroll = null;
     const prevPath = selectedPath;
     const prevBuffer = buffer;
     if (prevPath) {
@@ -1362,8 +1387,7 @@
         aiEditorRef={aiEditorRef}
         onDocumentChange={onEditorChange}
         onReady={onEditorReady}
-        onTypstPreviewSourceScroll={(pos) =>
-          schedulePreviewSourceScroll(pos.line0, pos.character)}
+        onTypstPreviewSourceScroll={schedulePreviewSourceScroll}
         compileDiagnostics={diagnostics}
         focusDiagnosticRequest={diagnosticFocus}
         {previewScroll}
