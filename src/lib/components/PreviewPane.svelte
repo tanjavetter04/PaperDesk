@@ -9,10 +9,13 @@
   let {
     pdfUrl,
     page = 1,
+    /** When true (e.g. splitter drag), skip resize-driven PDF re-render until released. */
+    suspendResize = false,
   }: {
     pdfUrl: string | null;
     /** 1-based page for scroll sync (pdf.js). */
     page?: number;
+    suspendResize?: boolean;
   } = $props();
 
   let slot = $state<HTMLDivElement | null>(null);
@@ -160,11 +163,26 @@
     });
   });
 
+  /** ResizeObserver callback cannot read reactive props; keep latest flag here. */
+  const suspendResizeRef = { current: false };
+  $effect(() => {
+    suspendResizeRef.current = suspendResize;
+  });
+
+  let prevSuspendResize = false;
+  $effect(() => {
+    if (prevSuspendResize && !suspendResize) {
+      layoutRev += 1;
+    }
+    prevSuspendResize = suspendResize;
+  });
+
   $effect(() => {
     const wrap = slot;
     if (!wrap) return;
     let lastW = -1;
     const ro = new ResizeObserver((entries) => {
+      if (suspendResizeRef.current) return;
       const w = Math.round(entries[0]?.contentRect.width ?? wrap.clientWidth);
       if (w === lastW) return;
       lastW = w;
@@ -231,11 +249,13 @@
     opacity: 0.25;
   }
 
+  /* No max-width: 100% here: while the splitter narrows the column before pdf.js
+     re-renders, that rule would shrink only the CSS width and keep the old height,
+     which looks vertically squashed. Overflow scrolls horizontally instead. */
   :global(.pages-stack .pdf-canvas) {
     display: block;
     margin: 0 auto;
-    max-width: 100%;
-    height: auto;
+    flex-shrink: 0;
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
   }
 
