@@ -1,10 +1,24 @@
 export type ThemeMode = "dark" | "light";
 
+/** Hunspell-based editor spellcheck; `off` disables it. */
+export type SpellcheckLanguage = "off" | "de" | "en";
+
 const K_THEME = "paperdesk.theme";
 const K_FONT = "paperdesk.fontSizePx";
 const K_DIR = "paperdesk.defaultProjectDir";
 const K_BIB = "paperdesk.zoteroBibRelativePath";
+const K_SPELL_LANG = "paperdesk.spellcheckLang";
+const K_SPELL_LEGACY = "paperdesk.spellcheck";
 const DEFAULT_BIB_REL = "literatur.bib";
+
+function readSpellcheckLanguage(): SpellcheckLanguage {
+  if (typeof localStorage === "undefined") return "de";
+  const raw = localStorage.getItem(K_SPELL_LANG);
+  if (raw === "off" || raw === "de" || raw === "en") return raw;
+  const legacy = localStorage.getItem(K_SPELL_LEGACY);
+  if (legacy === "0") return "off";
+  return "de";
+}
 
 function readTheme(): ThemeMode {
   if (typeof localStorage === "undefined") return "dark";
@@ -39,6 +53,7 @@ export const appSettings = $state({
   fontSizePx: readFontSize(),
   defaultProjectDir: readDefaultDir(),
   zoteroBibRelativePath: readZoteroBibRelativePath(),
+  spellcheckLanguage: readSpellcheckLanguage(),
 });
 
 export function applyAppearance() {
@@ -83,7 +98,13 @@ export function clearDefaultProjectDir() {
   }
 }
 
-/** Relative path under project root; invalid input falls back to default. */
+export function setSpellcheckLanguage(next: SpellcheckLanguage) {
+  appSettings.spellcheckLanguage = next;
+  if (typeof localStorage !== "undefined") {
+    localStorage.setItem(K_SPELL_LANG, next);
+  }
+}
+
 export function setZoteroBibRelativePath(path: string): string {
   const t = path.trim().replace(/\\/g, "/");
   const next =

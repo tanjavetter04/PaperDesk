@@ -1,6 +1,99 @@
 # PaperDesk
 
-Local Typst writing environment (Tauri + SvelteKit + TypeScript).
+A local, privacy-focused writing environment for [Typst](https://typst.app/) documents, built with Tauri, SvelteKit, and TypeScript. Designed for academic writing, theses, and technical documents.
+
+## Features
+
+### Editor
+
+- Full **Typst editor** powered by CodeMirror 6 with syntax highlighting, line numbers, line wrapping, and active-line highlighting
+- **Typst autocomplete** for commands (`#set`, `#show`, `#import`, …), symbols (`sym.`), math mode (Greek letters, operators, functions), and more
+- **Markdown** editing support for `.md` files
+- Configurable **font size** (12–22 px)
+- **Light and dark themes**
+- **Find and replace** via CodeMirror search
+- **Undo/redo**, rectangular selection, and standard keyboard shortcuts
+- **Auto-save** with debounced writes (~140 ms)
+
+### Live Preview
+
+- Real-time **PDF preview** powered by [tinymist](https://github.com/Myriad-Dreamin/tinymist)
+- **Source-to-preview sync** — cursor position scrolls the preview to the corresponding location
+- **Preview-to-source sync** — clicking in the preview jumps to the matching source line
+- Fallback PDF rendering via pdf.js when tinymist is unavailable
+
+### Compilation and Export
+
+- **Compile** Typst projects with inline diagnostics (errors and warnings with file, line, and column)
+- **Export to PDF** via a save dialog
+- **Diagnostics panel** listing all errors and warnings, with click-to-jump navigation
+
+### Project Management
+
+- **Open** existing project folders or **create new projects** from a thesis template or as an empty project
+- **Recent projects** hub with up to 6 tiles showing PDF thumbnails
+- **Rename**, **duplicate**, and **delete** projects from the hub
+- Configurable **default project directory** for open/create dialogs
+
+### File Management
+
+- **Hierarchical file tree** with collapsible folders
+- **Create**, **rename**, **move**, and **delete** files and folders
+- Context menu for quick actions
+- Protection against deleting or renaming `main.typ`
+
+### Clipboard and Image Paste
+
+- **Paste images** from the system clipboard directly into the editor — images are saved as PNG to `assets/` and an `#image(…)` reference is inserted automatically
+- Supports pasting from clipboard API, HTML data URLs, and plain text fallback
+- Relative paths are computed from the current file to the asset
+
+### Spell Checking
+
+- Built-in **spell checker** using nspell (Hunspell-compatible)
+- Supports **German** and **English** dictionaries
+- Incremental scanning for performance on large documents
+- Inline error count and quick-fix suggestions
+
+### AI Assistant
+
+- Optional **AI writing assistant** using any OpenAI-compatible API (e.g. Featherless)
+- **Chat panel** with conversation history
+- **Quick actions**: improve selected text or get help with Typst code
+- Sends editor context (file path, selection) for relevant suggestions
+- Configurable API key, base URL, and model (with suggested presets)
+
+### Version History
+
+- **Git-based version history** using a dedicated `refs/paperdesk/history` ref (does not interfere with your own Git workflow)
+- **Manual snapshots** via a "Create snapshot" button
+- **Automatic checkpoints** on save, compile, export, file operations, and after idle periods
+- **Commit list** showing up to 80 history entries
+- **Diff view** showing changes between any snapshot and the current state
+- **Restore** the project to any previous snapshot
+
+### Zotero and Bibliography Integration
+
+- Watches a `.bib` file in the project for external changes (e.g. from Zotero with Better BibTeX auto-export)
+- Automatically refreshes diagnostics, editor, and preview when the bibliography changes
+- Conflict detection when the `.bib` file changes while the editor has unsaved modifications
+
+### Settings
+
+- **Language**: German or English (UI and autocomplete labels)
+- **Theme**: light or dark
+- **Font size**: adjustable editor font
+- **Default project folder**: preset directory for dialogs
+- **Zotero bibliography path**: relative path to the `.bib` file
+- **Spell check language**: off, German, or English
+- **AI configuration**: enable/disable, API key, base URL, model
+
+### Internationalization
+
+- Full **German** and **English** UI translations (~150+ message keys)
+- Dynamic document title and autocomplete section labels adapt to the selected language
+
+---
 
 ## Zotero and bibliography (local setup)
 

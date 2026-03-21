@@ -4,13 +4,25 @@
     clearDefaultProjectDir,
     setDefaultProjectDir,
     setFontSizePx,
+    setSpellcheckLanguage,
     setTheme,
     setZoteroBibRelativePath,
+    type SpellcheckLanguage,
     type ThemeMode,
   } from "$lib/appSettings.svelte";
   import { locale, setLocale, t } from "$lib/i18n/locale.svelte";
   import type { Locale } from "$lib/i18n/messages";
-  import { pickProjectFolder, restartBibWatcher } from "$lib/tauri/api";
+  import { FEATHERLESS_SUGGESTED_MODELS } from "$lib/ai/featherlessSuggestedModels";
+  import {
+    aiGetStatus,
+    aiSetConfig,
+    pickProjectFolder,
+    restartBibWatcher,
+    type AiStatus,
+  } from "$lib/tauri/api";
+
+  /** Dropdown sentinel; never sent to the API. */
+  const AI_MODEL_OTHER = "__paperdesk_ai_other__";
 
   let {
     open,
@@ -23,24 +35,47 @@
   /** Native `<select>` popups stay dark on some WebKit/GTK builds; custom list uses app colors only. */
   let localeMenuOpen = $state(false);
   let themeMenuOpen = $state(false);
+  let spellMenuOpen = $state(false);
   let langRoot = $state<HTMLDivElement | null>(null);
   let themeRoot = $state<HTMLDivElement | null>(null);
+  let spellRoot = $state<HTMLDivElement | null>(null);
+  let aiModelPresetRoot = $state<HTMLDivElement | null>(null);
+  let aiModelPresetMenuOpen = $state(false);
 
   $effect(() => {
     if (!open) {
       localeMenuOpen = false;
       themeMenuOpen = false;
+      spellMenuOpen = false;
+      aiModelPresetMenuOpen = false;
     }
   });
 
   function onDocPointerDown(e: PointerEvent) {
-    if (!localeMenuOpen && !themeMenuOpen) return;
+    if (
+      !localeMenuOpen &&
+      !themeMenuOpen &&
+      !spellMenuOpen &&
+      !aiModelPresetMenuOpen
+    ) {
+      return;
+    }
     const node = e.target as Node;
     if (localeMenuOpen && langRoot && !langRoot.contains(node)) {
       localeMenuOpen = false;
     }
     if (themeMenuOpen && themeRoot && !themeRoot.contains(node)) {
       themeMenuOpen = false;
+    }
+    if (spellMenuOpen && spellRoot && !spellRoot.contains(node)) {
+      spellMenuOpen = false;
+    }
+    if (
+      aiModelPresetMenuOpen &&
+      aiModelPresetRoot &&
+      !aiModelPresetRoot.contains(node)
+    ) {
+      aiModelPresetMenuOpen = false;
     }
   }
 
@@ -54,6 +89,17 @@
     themeMenuOpen = false;
   }
 
+  function spellLangLabel(lang: SpellcheckLanguage): string {
+    if (lang === "off") return t("settings.spellLangOff");
+    if (lang === "de") return t("settings.spellLangDe");
+    return t("settings.spellLangEn");
+  }
+
+  function pickSpellLang(next: SpellcheckLanguage) {
+    setSpellcheckLanguage(next);
+    spellMenuOpen = false;
+  }
+
   async function chooseDefaultProjectFolder() {
     const p = await pickProjectFolder(t("dialog.newProjectParentFolder"), {
       defaultPath: appSettings.defaultProjectDir.trim() || undefined,
@@ -63,8 +109,134 @@
 
   let bibDraft = $state(appSettings.zoteroBibRelativePath);
 
+  let aiStatus = $state<AiStatus | null>(null);
+  let aiEnabled = $state(false);
+  let aiApiKeyDraft = $state("");
+  let aiApiKeyTouched = $state(false);
+  let aiBaseUrl = $state("");
+  let aiModelPick = $state("");
+  let aiModelOtherDraft = $state("");
+  let aiReady = $state(false);
+  let aiSaveFlash = $state<"ok" | "err" | null>(null);
+  let aiKeyRemoveBusy = $state(false);
+
+  function featherlessSuggestedLabel(
+    m: (typeof FEATHERLESS_SUGGESTED_MODELS)[number],
+  ): string {
+    return locale.value === "de" ? m.labelDe : m.labelEn;
+  }
+
+  function effectiveAiModel(): string {
+    if (aiModelPick === AI_MODEL_OTHER) return aiModelOtherDraft.trim();
+    return aiModelPick.trim();
+  }
+
+  function hydrateAiModelFromStored(stored: string) {
+    const hit = FEATHERLESS_SUGGESTED_MODELS.find((m) => m.id === stored);
+    if (hit) {
+      aiModelPick = stored;
+      aiModelOtherDraft = "";
+    } else {
+      aiModelPick = AI_MODEL_OTHER;
+      aiModelOtherDraft = stored;
+    }
+  }
+
+  function pickAiModelChoice(choice: string) {
+    aiModelPick = choice;
+    aiModelPresetMenuOpen = false;
+    if (choice !== AI_MODEL_OTHER) {
+      aiModelOtherDraft = "";
+    }
+  }
+
+  function aiModelTriggerText(): string {
+    if (!aiReady || aiModelPick === "") return t("settings.aiModelPresets");
+    if (aiModelPick === AI_MODEL_OTHER) return t("settings.aiModelOther");
+    const m = FEATHERLESS_SUGGESTED_MODELS.find((x) => x.id === aiModelPick);
+    return m ? featherlessSuggestedLabel(m) : t("settings.aiModelOther");
+  }
+
   $effect(() => {
     if (open) bibDraft = appSettings.zoteroBibRelativePath;
+  });
+
+  function aiNeedsPersist(): boolean {
+    if (!aiStatus) return false;
+    if (aiEnabled !== aiStatus.enabled) return true;
+    if (aiBaseUrl.trim() !== aiStatus.baseUrl.trim()) return true;
+    if (effectiveAiModel() !== aiStatus.model.trim()) return true;
+    if (aiApiKeyTouched) return true;
+    return false;
+  }
+
+  async function syncAiFromUi(context: "normal" | "close") {
+    if (!aiStatus) return;
+    if (context === "normal" && (!open || !aiReady)) return;
+    if (!aiNeedsPersist()) return;
+    if (context === "normal") aiSaveFlash = null;
+    try {
+      await aiSetConfig({
+        enabled: aiEnabled,
+        baseUrl: aiBaseUrl.trim(),
+        model: effectiveAiModel(),
+        ...(aiApiKeyTouched ? { apiKey: aiApiKeyDraft } : {}),
+      });
+      aiStatus = await aiGetStatus();
+      aiApiKeyDraft = "";
+      aiApiKeyTouched = false;
+      if (context === "normal") {
+        aiSaveFlash = "ok";
+        setTimeout(() => {
+          aiSaveFlash = null;
+        }, 2200);
+      }
+    } catch {
+      if (context === "normal") {
+        aiSaveFlash = "err";
+      }
+    }
+  }
+
+  $effect(() => {
+    if (!open) {
+      aiReady = false;
+      return;
+    }
+    aiReady = false;
+    void (async () => {
+      try {
+        const s = await aiGetStatus();
+        aiStatus = s;
+        aiEnabled = s.enabled;
+        aiApiKeyDraft = "";
+        aiApiKeyTouched = false;
+        aiBaseUrl = s.baseUrl;
+        hydrateAiModelFromStored(s.model.trim());
+        aiSaveFlash = null;
+        aiReady = true;
+      } catch {
+        aiStatus = null;
+        aiSaveFlash = null;
+        aiReady = false;
+      }
+    })();
+    return () => {
+      void syncAiFromUi("close");
+    };
+  });
+
+  $effect(() => {
+    if (!open || !aiReady) return;
+    aiBaseUrl;
+    aiModelPick;
+    aiModelOtherDraft;
+    aiApiKeyDraft;
+    aiApiKeyTouched;
+    const id = setTimeout(() => {
+      void syncAiFromUi("normal");
+    }, 450);
+    return () => clearTimeout(id);
   });
 
   async function applyBibPath() {
@@ -76,7 +248,402 @@
       /* no project open or watcher failed — ignore */
     }
   }
+
+  async function removeStoredAiKey() {
+    if (aiKeyRemoveBusy) return;
+    aiSaveFlash = null;
+    aiKeyRemoveBusy = true;
+    try {
+      await aiSetConfig({
+        enabled: aiEnabled,
+        baseUrl: aiBaseUrl.trim(),
+        model: effectiveAiModel(),
+        apiKey: "",
+      });
+      aiStatus = await aiGetStatus();
+      aiApiKeyDraft = "";
+      aiApiKeyTouched = false;
+      aiSaveFlash = "ok";
+      setTimeout(() => {
+        aiSaveFlash = null;
+      }, 2200);
+    } catch {
+      aiSaveFlash = "err";
+    } finally {
+      aiKeyRemoveBusy = false;
+    }
+  }
 </script>
+
+<svelte:window
+  onpointerdown={onDocPointerDown}
+  onkeydown={(e) => {
+    if (!open || e.key !== "Escape") return;
+    if (
+      localeMenuOpen ||
+      themeMenuOpen ||
+      spellMenuOpen ||
+      aiModelPresetMenuOpen
+    ) {
+      localeMenuOpen = false;
+      themeMenuOpen = false;
+      spellMenuOpen = false;
+      aiModelPresetMenuOpen = false;
+      e.preventDefault();
+      return;
+    }
+    onClose();
+  }}
+/>
+
+{#if open}
+  <div
+    class="backdrop"
+    role="presentation"
+    onclick={(e) => e.target === e.currentTarget && onClose()}
+  ></div>
+  <div
+    class="modal"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="settings-title"
+  >
+    <header class="modal-header">
+      <h2 id="settings-title">{t("settings.title")}</h2>
+    </header>
+    <div class="modal-body">
+    <label class="field">
+      {t("settings.language")}
+      <div class="custom-select" bind:this={langRoot}>
+        <button
+          type="button"
+          class="custom-select-trigger"
+          aria-haspopup="listbox"
+          aria-expanded={localeMenuOpen}
+          aria-label={t("settings.language")}
+          onclick={() => {
+            themeMenuOpen = false;
+            spellMenuOpen = false;
+            aiModelPresetMenuOpen = false;
+            localeMenuOpen = !localeMenuOpen;
+          }}
+        >
+          <span
+            >{locale.value === "de"
+              ? t("settings.languageDe")
+              : t("settings.languageEn")}</span
+          >
+        </button>
+        {#if localeMenuOpen}
+          <div class="custom-select-list" role="listbox">
+            <button
+              type="button"
+              role="option"
+              class="custom-select-option"
+              aria-selected={locale.value === "de"}
+              onclick={() => pickLocale("de")}
+            >
+              {t("settings.languageDe")}
+            </button>
+            <button
+              type="button"
+              role="option"
+              class="custom-select-option"
+              aria-selected={locale.value === "en"}
+              onclick={() => pickLocale("en")}
+            >
+              {t("settings.languageEn")}
+            </button>
+          </div>
+        {/if}
+      </div>
+    </label>
+    <label class="field">
+      {t("settings.theme")}
+      <div class="custom-select" bind:this={themeRoot}>
+        <button
+          type="button"
+          class="custom-select-trigger"
+          aria-haspopup="listbox"
+          aria-expanded={themeMenuOpen}
+          aria-label={t("settings.theme")}
+          onclick={() => {
+            localeMenuOpen = false;
+            spellMenuOpen = false;
+            aiModelPresetMenuOpen = false;
+            themeMenuOpen = !themeMenuOpen;
+          }}
+        >
+          <span
+            >{appSettings.theme === "dark"
+              ? t("settings.themeDark")
+              : t("settings.themeLight")}</span
+          >
+        </button>
+        {#if themeMenuOpen}
+          <div class="custom-select-list" role="listbox">
+            <button
+              type="button"
+              role="option"
+              class="custom-select-option"
+              aria-selected={appSettings.theme === "dark"}
+              onclick={() => pickTheme("dark")}
+            >
+              {t("settings.themeDark")}
+            </button>
+            <button
+              type="button"
+              role="option"
+              class="custom-select-option"
+              aria-selected={appSettings.theme === "light"}
+              onclick={() => pickTheme("light")}
+            >
+              {t("settings.themeLight")}
+            </button>
+          </div>
+        {/if}
+      </div>
+    </label>
+    <label class="field">
+      {t("settings.spellcheckLanguage")}
+      <div class="custom-select" bind:this={spellRoot}>
+        <button
+          type="button"
+          class="custom-select-trigger"
+          aria-haspopup="listbox"
+          aria-expanded={spellMenuOpen}
+          aria-label={t("settings.spellcheckLanguage")}
+          onclick={() => {
+            localeMenuOpen = false;
+            themeMenuOpen = false;
+            aiModelPresetMenuOpen = false;
+            spellMenuOpen = !spellMenuOpen;
+          }}
+        >
+          <span>{spellLangLabel(appSettings.spellcheckLanguage)}</span>
+        </button>
+        {#if spellMenuOpen}
+          <div class="custom-select-list" role="listbox">
+            <button
+              type="button"
+              role="option"
+              class="custom-select-option"
+              aria-selected={appSettings.spellcheckLanguage === "off"}
+              onclick={() => pickSpellLang("off")}
+            >
+              {t("settings.spellLangOff")}
+            </button>
+            <button
+              type="button"
+              role="option"
+              class="custom-select-option"
+              aria-selected={appSettings.spellcheckLanguage === "de"}
+              onclick={() => pickSpellLang("de")}
+            >
+              {t("settings.spellLangDe")}
+            </button>
+            <button
+              type="button"
+              role="option"
+              class="custom-select-option"
+              aria-selected={appSettings.spellcheckLanguage === "en"}
+              onclick={() => pickSpellLang("en")}
+            >
+              {t("settings.spellLangEn")}
+            </button>
+          </div>
+        {/if}
+      </div>
+      <p class="hint">{t("settings.spellcheckHint")}</p>
+    </label>
+    <label class="field">
+      {t("settings.fontSize")}
+      <div class="range-row">
+        <input
+          type="range"
+          class="range"
+          min="12"
+          max="22"
+          step="1"
+          value={appSettings.fontSizePx}
+          aria-valuemin={12}
+          aria-valuemax={22}
+          aria-valuenow={appSettings.fontSizePx}
+          oninput={(e) => setFontSizePx(+e.currentTarget.value)}
+        />
+        <span class="range-value">{appSettings.fontSizePx}px</span>
+      </div>
+    </label>
+    <label class="field">
+      <span class="field-label">{t("settings.zoteroBibPath")}</span>
+      <input
+        type="text"
+        class="text-input"
+        spellcheck="false"
+        autocomplete="off"
+        bind:value={bibDraft}
+        onblur={() => void applyBibPath()}
+        onkeydown={(e) => {
+          if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur();
+        }}
+      />
+      <p class="hint">{t("settings.zoteroBibHint")}</p>
+    </label>
+    <div class="field">
+      <span class="field-label">{t("settings.defaultProjectFolder")}</span>
+      <p
+        class="path-preview"
+        title={appSettings.defaultProjectDir || undefined}
+      >
+        {appSettings.defaultProjectDir.trim()
+          ? appSettings.defaultProjectDir
+          : t("settings.defaultFolderNone")}
+      </p>
+      <div class="folder-btns">
+        <button
+          type="button"
+          class="secondary"
+          onclick={() => void chooseDefaultProjectFolder()}
+        >
+          {t("settings.chooseDefaultFolder")}
+        </button>
+        {#if appSettings.defaultProjectDir.trim()}
+          <button type="button" class="ghost" onclick={clearDefaultProjectDir}>
+            {t("settings.clearDefaultFolder")}
+          </button>
+        {/if}
+      </div>
+    </div>
+    <div class="ai-block">
+      <h3 class="ai-heading">{t("settings.aiHeading")}</h3>
+      <label class="check-row">
+        <input
+          type="checkbox"
+          checked={aiEnabled}
+          onchange={(e) => {
+            aiEnabled = e.currentTarget.checked;
+            void syncAiFromUi("normal");
+          }}
+        />
+        <span>{t("settings.aiEnable")}</span>
+      </label>
+      <label class="field">
+        {t("settings.aiApiKey")}
+        <input
+          type="password"
+          class="text-input"
+          spellcheck="false"
+          autocomplete="off"
+          placeholder={t("settings.aiApiKeyPlaceholder")}
+          bind:value={aiApiKeyDraft}
+          oninput={() => {
+            aiApiKeyTouched = true;
+          }}
+        />
+        {#if aiStatus?.hasApiKey}
+          <button
+            type="button"
+            class="ai-remove-key"
+            disabled={aiKeyRemoveBusy}
+            aria-busy={aiKeyRemoveBusy}
+            onclick={() => void removeStoredAiKey()}
+          >
+            {t("settings.aiRemoveKey")}
+          </button>
+        {/if}
+      </label>
+      <label class="field">
+        {t("settings.aiBaseUrl")}
+        <input
+          type="text"
+          class="text-input"
+          spellcheck="false"
+          autocomplete="off"
+          bind:value={aiBaseUrl}
+        />
+      </label>
+      <div class="field ai-model-settings">
+        <span class="field-label">{t("settings.aiModel")}</span>
+        <p id="settings-ai-model-flow" class="hint">{t("settings.aiModelFlowExplain")}</p>
+        <div class="custom-select ai-model-presets" bind:this={aiModelPresetRoot}>
+          <button
+            type="button"
+            class="custom-select-trigger"
+            aria-haspopup="listbox"
+            aria-expanded={aiModelPresetMenuOpen}
+            aria-label={t("settings.aiModel")}
+            aria-describedby="settings-ai-model-flow"
+            onclick={() => {
+              localeMenuOpen = false;
+              themeMenuOpen = false;
+              spellMenuOpen = false;
+              aiModelPresetMenuOpen = !aiModelPresetMenuOpen;
+            }}
+          >
+            <span class="ai-model-preset-trigger-text">{aiModelTriggerText()}</span>
+          </button>
+          {#if aiModelPresetMenuOpen}
+            <div
+              class="custom-select-list ai-model-preset-list"
+              role="listbox"
+              aria-label={t("settings.aiModelPresets")}
+            >
+              {#each FEATHERLESS_SUGGESTED_MODELS as m (m.id)}
+                <button
+                  type="button"
+                  role="option"
+                  class="custom-select-option ai-model-preset-option"
+                  aria-selected={aiModelPick === m.id}
+                  onclick={() => pickAiModelChoice(m.id)}
+                >
+                  <span class="ai-model-preset-title">{featherlessSuggestedLabel(m)}</span>
+                  <span class="ai-model-preset-id">{m.id}</span>
+                </button>
+              {/each}
+              <button
+                type="button"
+                role="option"
+                class="custom-select-option ai-model-preset-option ai-model-other-option"
+                aria-selected={aiModelPick === AI_MODEL_OTHER}
+                onclick={() => pickAiModelChoice(AI_MODEL_OTHER)}
+              >
+                {t("settings.aiModelOther")}
+              </button>
+            </div>
+          {/if}
+        </div>
+        {#if aiModelPick === AI_MODEL_OTHER}
+          <label class="ai-model-other-block" for="settings-ai-model-other-input">
+            <span class="ai-model-sublabel">{t("settings.aiModelOther")}</span>
+            <input
+              id="settings-ai-model-other-input"
+              type="text"
+              class="text-input"
+              spellcheck="false"
+              autocomplete="off"
+              placeholder={t("settings.aiModelOtherPlaceholder")}
+              bind:value={aiModelOtherDraft}
+              aria-describedby="settings-ai-model-other-hint"
+            />
+            <p id="settings-ai-model-other-hint" class="hint">{t("settings.aiModelOtherHint")}</p>
+          </label>
+        {/if}
+      </div>
+      <p class="hint">{t("settings.aiHint")}</p>
+      {#if aiSaveFlash === "ok"}
+        <p class="ai-flash ok">{t("settings.aiSaved")}</p>
+      {:else if aiSaveFlash === "err"}
+        <p class="ai-flash err">{t("settings.aiSaveError")}</p>
+      {/if}
+    </div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="primary" onclick={onClose}>
+        {t("settings.close")}
+      </button>
+    </div>
+  </div>
+{/if}
 
 <style>
   .backdrop {
@@ -92,10 +659,14 @@
     top: 50%;
     transform: translate(-50%, -50%);
     z-index: 210;
-    min-width: min(380px, calc(100vw - 2rem));
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    /* Fixed width: shrink-to-fit on `position:fixed` + `width:auto` followed UI language string lengths. */
+    width: min(800px, calc(100vw - 2rem));
     max-height: min(90vh, 640px);
-    overflow: auto;
-    padding: 1rem 1.1rem;
+    overflow: hidden;
+    padding: 0;
     border-radius: 8px;
     border: 1px solid var(--pd-border);
     background: var(--pd-surface);
@@ -103,10 +674,33 @@
     box-shadow: 0 12px 40px rgb(0 0 0 / 0.35);
   }
 
-  .modal h2 {
-    margin: 0 0 0.75rem;
+  .modal-header {
+    flex-shrink: 0;
+    padding: 1rem 1.1rem 0.75rem;
+    border-bottom: 1px solid var(--pd-border);
+  }
+
+  .modal-header h2 {
+    margin: 0;
     font-size: 1rem;
     font-weight: 600;
+    line-height: 1.3;
+  }
+
+  .modal-body {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 0.75rem 1.1rem 0.25rem;
+  }
+
+  .modal-footer {
+    flex-shrink: 0;
+    display: flex;
+    justify-content: flex-end;
+    padding: 0.75rem 1.1rem 1rem;
+    border-top: 1px solid var(--pd-border);
+    background: var(--pd-surface);
   }
 
   .field {
@@ -260,9 +854,69 @@
     background: color-mix(in srgb, var(--pd-accent) 14%, var(--pd-bg));
   }
 
-  .btns {
+  .ai-model-settings .field-label {
+    color: var(--pd-text);
+    font-weight: 600;
+  }
+
+  .ai-model-sublabel {
+    display: block;
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--pd-text);
+    line-height: 1.35;
+  }
+
+  .ai-model-other-block {
     display: flex;
-    justify-content: flex-end;
+    flex-direction: column;
+    gap: 0.35rem;
+    margin-top: 0.5rem;
+  }
+
+  .ai-model-other-block .hint {
+    margin: 0;
+  }
+
+  .ai-model-other-option {
+    font-weight: 500;
+  }
+
+  .ai-model-presets {
+    margin-top: 0.35rem;
+  }
+
+  .ai-model-preset-list {
+    max-height: 16rem;
+  }
+
+  .ai-model-preset-option {
+    white-space: normal;
+    line-height: 1.35;
+  }
+
+  .ai-model-preset-title {
+    display: block;
+    font-weight: 500;
+    color: var(--pd-text);
+  }
+
+  .ai-model-preset-id {
+    display: block;
+    margin-top: 0.2rem;
+    font-size: 0.78rem;
+    font-family: var(--pd-mono), monospace;
+    color: var(--pd-muted);
+    word-break: break-all;
+  }
+
+  .ai-model-preset-trigger-text {
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: left;
   }
 
   .primary,
@@ -303,173 +957,79 @@
     color: var(--pd-text);
     border-color: var(--pd-border);
   }
+
+  .ai-block {
+    margin: 0.5rem 0 1rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--pd-border);
+  }
+
+  .ai-heading {
+    margin: 0 0 0.65rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--pd-text);
+  }
+
+  .check-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.85rem;
+    font-size: 1rem;
+    color: var(--pd-text);
+    cursor: pointer;
+  }
+
+  .check-row input {
+    accent-color: var(--pd-accent);
+    width: 1rem;
+    height: 1rem;
+  }
+
+  .ai-remove-key {
+    box-sizing: border-box;
+    width: fit-content;
+    max-width: 100%;
+    align-self: flex-start;
+    margin-top: 0.5rem;
+    padding: 0.55rem 0.75rem;
+    border-radius: 6px;
+    border: 1px solid color-mix(in srgb, #f87171 55%, var(--pd-border));
+    background: color-mix(in srgb, #f87171 16%, var(--pd-bg));
+    color: color-mix(in srgb, #f87171 88%, var(--pd-text));
+    font-size: 0.95rem;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    text-align: left;
+  }
+
+  .ai-remove-key:hover:not(:disabled) {
+    background: color-mix(in srgb, #f87171 24%, var(--pd-bg));
+    border-color: color-mix(in srgb, #f87171 72%, var(--pd-border));
+  }
+
+  .ai-remove-key:focus-visible {
+    outline: 2px solid color-mix(in srgb, #f87171 55%, transparent);
+    outline-offset: 2px;
+  }
+
+  .ai-remove-key:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
+  .ai-flash {
+    margin: 0 0 0.5rem;
+    font-size: 0.88rem;
+  }
+
+  .ai-flash.ok {
+    color: color-mix(in srgb, #4ade80 80%, var(--pd-text));
+  }
+
+  .ai-flash.err {
+    color: color-mix(in srgb, #f87171 85%, var(--pd-text));
+  }
 </style>
-
-<svelte:window onpointerdown={onDocPointerDown} />
-
-{#if open}
-  <div
-    class="backdrop"
-    role="presentation"
-    onclick={(e) => e.target === e.currentTarget && onClose()}
-  ></div>
-  <div
-    class="modal"
-    role="dialog"
-    aria-modal="true"
-    aria-labelledby="settings-title"
-  >
-    <h2 id="settings-title">{t("settings.title")}</h2>
-    <label class="field">
-      {t("settings.language")}
-      <div class="custom-select" bind:this={langRoot}>
-        <button
-          type="button"
-          class="custom-select-trigger"
-          aria-haspopup="listbox"
-          aria-expanded={localeMenuOpen}
-          aria-label={t("settings.language")}
-          onclick={() => {
-            themeMenuOpen = false;
-            localeMenuOpen = !localeMenuOpen;
-          }}
-        >
-          <span
-            >{locale.value === "de"
-              ? t("settings.languageDe")
-              : t("settings.languageEn")}</span
-          >
-        </button>
-        {#if localeMenuOpen}
-          <div class="custom-select-list" role="listbox">
-            <button
-              type="button"
-              role="option"
-              class="custom-select-option"
-              aria-selected={locale.value === "de"}
-              onclick={() => pickLocale("de")}
-            >
-              {t("settings.languageDe")}
-            </button>
-            <button
-              type="button"
-              role="option"
-              class="custom-select-option"
-              aria-selected={locale.value === "en"}
-              onclick={() => pickLocale("en")}
-            >
-              {t("settings.languageEn")}
-            </button>
-          </div>
-        {/if}
-      </div>
-    </label>
-    <label class="field">
-      {t("settings.theme")}
-      <div class="custom-select" bind:this={themeRoot}>
-        <button
-          type="button"
-          class="custom-select-trigger"
-          aria-haspopup="listbox"
-          aria-expanded={themeMenuOpen}
-          aria-label={t("settings.theme")}
-          onclick={() => {
-            localeMenuOpen = false;
-            themeMenuOpen = !themeMenuOpen;
-          }}
-        >
-          <span
-            >{appSettings.theme === "dark"
-              ? t("settings.themeDark")
-              : t("settings.themeLight")}</span
-          >
-        </button>
-        {#if themeMenuOpen}
-          <div class="custom-select-list" role="listbox">
-            <button
-              type="button"
-              role="option"
-              class="custom-select-option"
-              aria-selected={appSettings.theme === "dark"}
-              onclick={() => pickTheme("dark")}
-            >
-              {t("settings.themeDark")}
-            </button>
-            <button
-              type="button"
-              role="option"
-              class="custom-select-option"
-              aria-selected={appSettings.theme === "light"}
-              onclick={() => pickTheme("light")}
-            >
-              {t("settings.themeLight")}
-            </button>
-          </div>
-        {/if}
-      </div>
-    </label>
-    <label class="field">
-      {t("settings.fontSize")}
-      <div class="range-row">
-        <input
-          type="range"
-          class="range"
-          min="12"
-          max="22"
-          step="1"
-          value={appSettings.fontSizePx}
-          aria-valuemin={12}
-          aria-valuemax={22}
-          aria-valuenow={appSettings.fontSizePx}
-          oninput={(e) => setFontSizePx(+e.currentTarget.value)}
-        />
-        <span class="range-value">{appSettings.fontSizePx}px</span>
-      </div>
-    </label>
-    <label class="field">
-      <span class="field-label">{t("settings.zoteroBibPath")}</span>
-      <input
-        type="text"
-        class="text-input"
-        spellcheck="false"
-        autocomplete="off"
-        bind:value={bibDraft}
-        onblur={() => void applyBibPath()}
-        onkeydown={(e) => {
-          if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur();
-        }}
-      />
-      <p class="hint">{t("settings.zoteroBibHint")}</p>
-    </label>
-    <div class="field">
-      <span class="field-label">{t("settings.defaultProjectFolder")}</span>
-      <p
-        class="path-preview"
-        title={appSettings.defaultProjectDir || undefined}
-      >
-        {appSettings.defaultProjectDir.trim()
-          ? appSettings.defaultProjectDir
-          : t("settings.defaultFolderNone")}
-      </p>
-      <div class="folder-btns">
-        <button
-          type="button"
-          class="secondary"
-          onclick={() => void chooseDefaultProjectFolder()}
-        >
-          {t("settings.chooseDefaultFolder")}
-        </button>
-        {#if appSettings.defaultProjectDir.trim()}
-          <button type="button" class="ghost" onclick={clearDefaultProjectDir}>
-            {t("settings.clearDefaultFolder")}
-          </button>
-        {/if}
-      </div>
-    </div>
-    <div class="btns">
-      <button type="button" class="primary" onclick={onClose}>
-        {t("settings.close")}
-      </button>
-    </div>
-  </div>
-{/if}

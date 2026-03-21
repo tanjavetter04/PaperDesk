@@ -6,7 +6,12 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
 use tauri::Emitter;
+use tungstenite::stream::MaybeTlsStream;
+use tungstenite::Error as WsError;
 use tungstenite::Message;
 
 use crate::project::paths::{join_under_root, MAIN_TYP};
@@ -14,6 +19,9 @@ use crate::AppState;
 
 const DATA_PLANE_PREFIX: &str = "Data plane server listening on: ";
 const CONTROL_PANEL_PREFIX: &str = "Control panel server listening on: ";
+
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 /// Prefer explicit `TINYMIST_PATH`, then the binary shipped in `resources/bin/`, then `PATH`.
 ///
@@ -93,6 +101,15 @@ fn materialized_bundled_tinymist(bundled: &Path, cache_dir: &Path) -> io::Result
     Ok(dest)
 }
 
+fn configure_background_child(cmd: &mut Command) {
+    #[cfg(target_os = "windows")]
+    {
+        // `tinymist.exe` is a console app; without this Windows may flash a console window
+        // when PaperDesk starts the preview process from the GUI app.
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+}
+
 fn parse_data_plane_url(line: &str) -> Option<String> {
     let idx = line.find(DATA_PLANE_PREFIX)?;
     let host = line[idx + DATA_PLANE_PREFIX.len()..].trim();
@@ -139,26 +156,106 @@ fn parse_editor_scroll_payload(txt: &str) -> Option<PreviewScrollToSource> {
     })
 }
 
-fn spawn_control_plane_listener(app: tauri::AppHandle, ws_url: String) -> thread::JoinHandle<()> {
-    thread::spawn(move || {
+struct ControlPlaneLink {
+    join: thread::JoinHandle<()>,
+    out_tx: mpsc::Sender<String>,
+}
+
+fn ws_read_is_timeout(err: &WsError) -> bool {
+    match err {
+        WsError::Io(e) => {
+            e.kind() == io::ErrorKind::WouldBlock || e.kind() == io::ErrorKind::TimedOut
+        }
+        _ => false,
+    }
+}
+
+fn set_control_plane_read_timeout(
+    socket: &mut tungstenite::WebSocket<MaybeTlsStream<std::net::TcpStream>>,
+) {
+    const READ_POLL: Duration = Duration::from_millis(80);
+    if let MaybeTlsStream::Plain(tcp) = socket.get_mut() {
+        let _ = tcp.set_read_timeout(Some(READ_POLL));
+    }
+}
+
+/// Tinymist accepts a single control-plane client; we multiplex read (preview → editor) and write
+/// (editor → `panelScrollTo`) on that connection.
+fn spawn_control_plane_listener(app: tauri::AppHandle, ws_url: String) -> Option<ControlPlaneLink> {
+    let (out_tx, out_rx) = mpsc::channel::<String>();
+    let join = thread::spawn(move || {
         let Ok((mut socket, _)) = tungstenite::connect(ws_url.as_str()) else {
             return;
         };
+        set_control_plane_read_timeout(&mut socket);
+
         loop {
+            while let Ok(payload) = out_rx.try_recv() {
+                if socket
+                    .send(Message::Text(payload.into()))
+                    .is_err()
+                {
+                    return;
+                }
+            }
+
             match socket.read() {
                 Ok(Message::Text(t)) => {
-                    if let Some(p) = parse_editor_scroll_payload(&t) {
+                    if let Some(p) = parse_editor_scroll_payload(t.as_str()) {
                         let _ = app.emit("preview-scroll-to-source", p);
                     }
                 }
                 Ok(Message::Ping(p)) => {
                     let _ = socket.send(Message::Pong(p));
                 }
-                Ok(Message::Close(_)) | Err(_) => break,
-                _ => {}
+                Ok(Message::Close(_)) => break,
+                Err(e) if ws_read_is_timeout(&e) => {}
+                Err(_) => break,
+                Ok(_) => {}
             }
         }
-    })
+    });
+    Some(ControlPlaneLink { join, out_tx })
+}
+
+/// Scroll the live preview to the source caret (tinymist `panelScrollTo` / `ResolveSourceLoc`).
+pub fn send_panel_scroll(
+    state: &AppState,
+    relative_path: &str,
+    line0: u32,
+    character: u32,
+) -> Result<(), String> {
+    let rel = relative_path.trim();
+    if rel.is_empty() {
+        return Ok(());
+    }
+    let guard = state.tinymist.lock().map_err(|e| e.to_string())?;
+    let Some(session) = guard.as_ref() else {
+        return Ok(());
+    };
+    let Some(cp) = session.control_plane.as_ref() else {
+        return Ok(());
+    };
+    let abs = session.root.join(rel);
+    let payload = serde_json::json!({
+        "event": "panelScrollTo",
+        "filepath": abs.to_string_lossy(),
+        "line": line0,
+        "character": character,
+    });
+    let text = serde_json::to_string(&payload).map_err(|e| e.to_string())?;
+    let _ = cp.out_tx.send(text);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn tinymist_panel_scroll_to_source(
+    state: tauri::State<'_, AppState>,
+    relative_path: String,
+    line0: u32,
+    character: u32,
+) -> Result<(), String> {
+    send_panel_scroll(&state, &relative_path, line0, character)
 }
 
 /// Kill any running preview process and clear state.
@@ -168,11 +265,11 @@ fn spawn_control_plane_listener(app: tauri::AppHandle, ws_url: String) -> thread
 pub fn stop(state: &AppState) -> Result<(), String> {
     let mut slot = state.tinymist.lock().map_err(|e| e.to_string())?;
     if let Some(mut session) = slot.take() {
-        let listener = session.control_plane_listener.take();
+        let cp = session.control_plane.take();
         let _ = session.child.kill();
         let _ = session.child.wait();
-        if let Some(h) = listener {
-            let _ = h.join();
+        if let Some(c) = cp {
+            let _ = c.join.join();
         }
     }
     Ok(())
@@ -256,7 +353,7 @@ pub struct TinymistSession {
     pub preview_url: String,
     pub root: PathBuf,
     pub entry_rel: String,
-    control_plane_listener: Option<thread::JoinHandle<()>>,
+    control_plane: Option<ControlPlaneLink>,
 }
 
 /// Start tinymist preview for the open project, or return the existing session URL if unchanged.
@@ -312,6 +409,7 @@ pub fn ensure_running(app: &tauri::AppHandle, state: &AppState) -> Result<String
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::piped());
+    configure_background_child(&mut cmd);
 
     let mut child = cmd.spawn().map_err(|e| {
         format!(
@@ -339,14 +437,14 @@ pub fn ensure_running(app: &tauri::AppHandle, state: &AppState) -> Result<String
     };
 
     let app_handle = app.clone();
-    let mut control_plane_listener = control_ws
+    let mut control_plane = control_ws
         .filter(|s| !s.is_empty())
-        .map(|ws| spawn_control_plane_listener(app_handle.clone(), ws));
+        .and_then(|ws| spawn_control_plane_listener(app_handle.clone(), ws));
 
-    if control_plane_listener.is_none() {
+    if control_plane.is_none() {
         if let Ok(ws) = rx_late_ws.recv_timeout(Duration::from_secs(10)) {
             if !ws.is_empty() {
-                control_plane_listener = Some(spawn_control_plane_listener(app_handle, ws));
+                control_plane = spawn_control_plane_listener(app_handle, ws);
             }
         }
     }
@@ -356,7 +454,7 @@ pub fn ensure_running(app: &tauri::AppHandle, state: &AppState) -> Result<String
         preview_url: preview_url.clone(),
         root,
         entry_rel: MAIN_TYP.into(),
-        control_plane_listener,
+        control_plane,
     });
 
     Ok(preview_url)

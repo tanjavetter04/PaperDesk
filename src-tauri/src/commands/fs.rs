@@ -1,6 +1,8 @@
 use std::fs;
 use std::path::Path;
 
+use base64::Engine;
+
 use crate::project::history;
 use crate::project::paths::{join_under_root, MAIN_TYP};
 use crate::AppState;
@@ -104,7 +106,7 @@ pub fn create_project_dir(
     }
     fs::create_dir_all(&path).map_err(|e| e.to_string())?;
     drop(guard);
-    let _ = history::try_checkpoint(&state, &root, "paperdesk: new folder", true);
+    let _ = history::try_checkpoint(&state, &root, "new folder", true);
     Ok(())
 }
 
@@ -140,7 +142,40 @@ pub fn move_project_path(
     }
     fs::rename(&from_path, &to_path).map_err(|e| e.to_string())?;
     drop(guard);
-    let _ = history::try_checkpoint(&state, &root, "paperdesk: move/rename", true);
+    let _ = history::try_checkpoint(&state, &root, "move/rename", true);
+    Ok(())
+}
+
+/// Delete a file or directory under the project root (`relative_path` uses `/`).
+#[tauri::command]
+pub fn delete_project_path(
+    state: tauri::State<'_, AppState>,
+    relative_path: String,
+) -> Result<(), String> {
+    let rel = relative_path.trim().replace('\\', "/");
+    if rel.is_empty() {
+        return Err("cannot delete project root".into());
+    }
+    if rel == MAIN_TYP {
+        return Err("cannot delete main.typ (project entry file)".into());
+    }
+    let guard = state.project_root.lock().map_err(|e| e.to_string())?;
+    let root = guard
+        .clone()
+        .ok_or_else(|| "no project open".to_string())?;
+    let path = join_under_root(&root, &rel)?;
+    if !path.exists() {
+        return Err("path does not exist".into());
+    }
+    let meta = path.metadata().map_err(|e| e.to_string())?;
+    if meta.is_dir() {
+        fs::remove_dir_all(&path).map_err(|e| e.to_string())?;
+    } else {
+        fs::remove_file(&path).map_err(|e| e.to_string())?;
+    }
+    drop(guard);
+    history::note_dirty(&state);
+    let _ = history::try_checkpoint(&state, &root, "delete", true);
     Ok(())
 }
 
@@ -169,6 +204,46 @@ pub fn write_text_file(
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     fs::write(&path, content).map_err(|e| e.to_string())?;
+    history::note_dirty(&state);
+    Ok(())
+}
+
+fn is_allowed_assets_image_path(relative: &str) -> bool {
+    let r = relative.trim().replace('\\', "/");
+    if !r.starts_with("assets/") || r.contains("..") {
+        return false;
+    }
+    let lower = r.to_ascii_lowercase();
+    lower.ends_with(".png")
+        || lower.ends_with(".jpg")
+        || lower.ends_with(".jpeg")
+        || lower.ends_with(".webp")
+        || lower.ends_with(".gif")
+}
+
+/// Write binary data (Base64) under the project root. Restricted to `assets/` image paths.
+#[tauri::command]
+pub fn write_binary_file(
+    state: tauri::State<'_, AppState>,
+    relative_path: String,
+    content_base64: String,
+) -> Result<(), String> {
+    let relative_path = relative_path.trim().replace('\\', "/");
+    if !is_allowed_assets_image_path(&relative_path) {
+        return Err("only image files under assets/ are allowed".into());
+    }
+    let guard = state.project_root.lock().map_err(|e| e.to_string())?;
+    let root = guard
+        .clone()
+        .ok_or_else(|| "no project open".to_string())?;
+    let path = join_under_root(&root, &relative_path)?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(content_base64.trim().as_bytes())
+        .map_err(|e| format!("invalid base64: {e}"))?;
+    fs::write(&path, bytes).map_err(|e| e.to_string())?;
     history::note_dirty(&state);
     Ok(())
 }

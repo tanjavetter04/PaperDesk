@@ -13,11 +13,14 @@ jobs:
       matrix:
         include:
           - platform: ubuntu-22.04
-            args: "--bundles appimage"
-            artifact_name: paperdesk-linux-appimage
+            args: "--bundles appimage,deb"
+            artifact_name: paperdesk-linux
           - platform: windows-latest
             args: "--bundles nsis"
             artifact_name: paperdesk-windows
+          - platform: macos-latest
+            args: "--bundles dmg"
+            artifact_name: paperdesk-macos
 
     runs-on: ${{ matrix.platform }}
 

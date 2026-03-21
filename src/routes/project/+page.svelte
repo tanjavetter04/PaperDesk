@@ -10,6 +10,7 @@
   import MessageModal from "$lib/components/MessageModal.svelte";
   import ConfirmModal from "$lib/components/ConfirmModal.svelte";
   import HistoryPanel from "$lib/components/HistoryPanel.svelte";
+  import AiAssistantPanel from "$lib/components/AiAssistantPanel.svelte";
   import {
     getOpenProject,
     renameProject,
@@ -17,11 +18,13 @@
     writeTextFile,
     createProjectDir,
     moveProjectPath,
+    deleteProjectPath,
     compileProject,
     exportPdf,
     closeProject,
     startTinymistPreview,
     restartTinymistPreview,
+    tinymistPanelScrollToSource,
     historyGetStatus,
     historyRespondEnable,
     historyRespondExistingGit,
@@ -32,6 +35,7 @@
     restartBibWatcher,
   } from "$lib/tauri/api";
   import type {
+    AiEditorContextHost,
     CompileDiagnostic,
     HistoryCommitSummary,
     HistoryStatus,
@@ -40,6 +44,7 @@
     ProjectEntry,
   } from "$lib/tauri/api";
   import { appSettings } from "$lib/appSettings.svelte";
+  import { scheduleWarmAlternateSpellDicts } from "$lib/editor/spellDictionaries";
   import { t } from "$lib/i18n/locale.svelte";
   import { openSettingsModal } from "$lib/settingsModal.svelte";
 
@@ -67,6 +72,10 @@
   let messageModalOpen = $state(false);
   let messageModalText = $state("");
   let bibConflictModalOpen = $state(false);
+  let treeRenameModalOpen = $state(false);
+  let treeRenameSourcePath = $state<string | null>(null);
+  let treeDeleteModalOpen = $state(false);
+  let treeDeletePath = $state<string | null>(null);
   /** Bump to force EditorPane to re-read the current `selectedPath` from disk. */
   let reloadFromDiskTick = $state(0);
 
@@ -76,13 +85,20 @@
   let historyPanelOpen = $state(false);
   let historyCommits = $state<HistoryCommitSummary[]>([]);
   let historyBusy = $state(false);
+  /** True while reloading commits but we already had a list (keep list visible). */
+  let historyRefreshing = $state(false);
   let historyDiffText = $state("");
   let historyDiffOpen = $state(false);
   let historyRestoreCommitId = $state<string | null>(null);
   let editorReloadTick = $state(0);
+  let aiPanelOpen = $state(false);
+  const aiEditorRef: AiEditorContextHost = {
+    read: () => ({ path: null, selectedText: "" }),
+  };
 
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
   let diagnosticsTimer: ReturnType<typeof setTimeout> | null = null;
+  let previewSourceScrollTimer: ReturnType<typeof setTimeout> | null = null;
   let historyIdleTimer: ReturnType<typeof setTimeout> | null = null;
 
   const HISTORY_IDLE_MS = 10_000;
@@ -100,6 +116,8 @@
   const LIVE_SAVE_DEBOUNCE_MS = 140;
   /** Typst compile for the diagnostics panel (tinymist preview does not feed this list). */
   const DIAGNOSTICS_DEBOUNCE_MS = 420;
+  /** Source caret → tinymist live preview scroll (`panelScrollTo`). */
+  const PREVIEW_SOURCE_SCROLL_DEBOUNCE_MS = 120;
 
   const historyActive = $derived.by(() => {
     const s = historyStatus;
@@ -307,6 +325,10 @@
     reloadFromDiskTick += 1;
   }
 
+  $effect(() => {
+    scheduleWarmAlternateSpellDicts(appSettings.spellcheckLanguage);
+  });
+
   onMount(() => {
     let unlistenPreview: (() => void) | undefined;
     let unlistenBib: (() => void) | undefined;
@@ -394,15 +416,27 @@
     return projectEntries.filter((e) => !e.isDir).map((e) => e.path);
   }
 
+  function pickTypEditorPath(files: string[]): string | null {
+    return (
+      files.find((f) => f === "main.typ") ??
+      files.find((f) => f.toLowerCase().endsWith(".typ")) ??
+      null
+    );
+  }
+
   async function refreshFiles() {
     try {
       projectEntries = await listProjectEntries();
       const files = projectFilePaths();
       if (files.length && !selectedPath) {
-        selectedPath = files.find((f) => f === "main.typ") ?? files[0] ?? null;
+        selectedPath = pickTypEditorPath(files);
       }
-      if (selectedPath && !files.includes(selectedPath)) {
-        selectedPath = files.find((f) => f === "main.typ") ?? files[0] ?? null;
+      const stale =
+        selectedPath &&
+        (!files.includes(selectedPath) ||
+          !selectedPath.toLowerCase().endsWith(".typ"));
+      if (stale) {
+        selectedPath = pickTypEditorPath(files);
         editorBufferPath = null;
       }
     } catch {
@@ -465,6 +499,135 @@
     return i === -1 ? "" : path.slice(0, i);
   }
 
+  function treeItemBasename(path: string): string {
+    const i = path.lastIndexOf("/");
+    return i === -1 ? path : path.slice(i + 1);
+  }
+
+  function adjustTreeTargetAfterRenamePrefix(from: string, to: string) {
+    if (treeTargetDir === from) {
+      treeTargetDir = to;
+    } else if (treeTargetDir.startsWith(from + "/")) {
+      treeTargetDir = to + treeTargetDir.slice(from.length);
+    }
+  }
+
+  function openTreeRename(path: string, _isDir: boolean) {
+    if (path === "main.typ") return;
+    treeRenameSourcePath = path;
+    treeRenameModalOpen = true;
+  }
+
+  function openTreeDelete(path: string, _isDir: boolean) {
+    if (path === "main.typ") return;
+    treeDeletePath = path;
+    treeDeleteModalOpen = true;
+  }
+
+  async function confirmTreeRename(raw: string) {
+    treeRenameModalOpen = false;
+    const from = treeRenameSourcePath;
+    treeRenameSourcePath = null;
+    if (!from) return;
+    const base = safeTreeBasename(raw);
+    if (!base) {
+      showMessage(t("project.invalidName"));
+      return;
+    }
+    const parent = parentDirOfRel(from);
+    const to = parent ? `${parent}/${base}` : base;
+    if (to === from) return;
+    if (projectEntries.some((e) => e.path === to)) {
+      showMessage(t("project.pathExists"));
+      return;
+    }
+    try {
+      if (selectedPath) {
+        const underRename =
+          selectedPath === from || selectedPath.startsWith(from + "/");
+        if (underRename) {
+          if (saveTimer) {
+            clearTimeout(saveTimer);
+            saveTimer = null;
+          }
+          await flushPathToDisk(selectedPath, buffer);
+        }
+      }
+      await moveProjectPath(from, to);
+      if (selectedPath === from) {
+        selectedPath = to;
+        treeTargetDir = parentDirOfRel(to);
+        editorBufferPath = null;
+      } else if (selectedPath?.startsWith(from + "/")) {
+        selectedPath = to + selectedPath.slice(from.length);
+        treeTargetDir = parentDirOfRel(selectedPath);
+        editorBufferPath = null;
+      }
+      adjustTreeTargetAfterRenamePrefix(from, to);
+      await refreshFiles();
+      try {
+        await historyCheckpoint("move/rename", true);
+      } catch {
+        /* best effort */
+      }
+      const watch = appSettings.zoteroBibPath?.trim();
+      if (watch && selectedPath?.endsWith(".bib")) {
+        void restartBibWatcher(selectedPath);
+      }
+      await ensurePreview(true);
+      void refreshDiagnostics();
+    } catch (e) {
+      showMessage(formatUserError(e));
+    }
+  }
+
+  async function confirmTreeDelete() {
+    const path = treeDeletePath;
+    treeDeleteModalOpen = false;
+    treeDeletePath = null;
+    if (!path) return;
+    try {
+      if (
+        selectedPath &&
+        (selectedPath === path || selectedPath.startsWith(path + "/"))
+      ) {
+        if (saveTimer) {
+          clearTimeout(saveTimer);
+          saveTimer = null;
+        }
+        await flushPathToDisk(selectedPath, buffer);
+      }
+      await deleteProjectPath(path);
+      if (treeTargetDir === path || treeTargetDir.startsWith(path + "/")) {
+        treeTargetDir = parentDirOfRel(path);
+      }
+      await refreshFiles();
+      const files = projectFilePaths();
+      if (
+        selectedPath &&
+        (selectedPath === path || selectedPath.startsWith(path + "/"))
+      ) {
+        selectedPath = pickTypEditorPath(files);
+        editorBufferPath = null;
+        diagnostics = [];
+        saveLabel = "saved";
+      }
+      try {
+        await historyCheckpoint("delete", true);
+      } catch {
+        /* best effort */
+      }
+      const watch = appSettings.zoteroBibPath?.trim();
+      if (watch && selectedPath?.endsWith(".bib")) {
+        void restartBibWatcher(selectedPath);
+      }
+      await ensurePreview(true);
+      void refreshDiagnostics();
+    } catch (e) {
+      showMessage(formatUserError(e));
+    }
+  }
+
   function projectFolderLabel(absolutePath: string): string {
     const n = absolutePath.trim().replace(/\\/g, "/").replace(/\/+$/, "");
     if (!n || n === "/") return absolutePath;
@@ -524,14 +687,16 @@
 
   async function refreshHistoryCommits() {
     if (!historyActive) return;
+    const keepListVisible = historyCommits.length > 0;
     historyBusy = true;
+    historyRefreshing = keepListVisible;
     try {
       historyCommits = await historyListCommits(80);
     } catch (e) {
       showMessage(formatUserError(e));
-      historyCommits = [];
     } finally {
       historyBusy = false;
+      historyRefreshing = false;
     }
   }
 
@@ -540,13 +705,44 @@
     clearHistoryIdleTimer();
     await syncHistoryStatus(false);
     if (!historyActive) {
-      showMessage(
-        "Projekt-Verlauf ist nicht aktiv (oder ohne vorhandenes Git nicht freigegeben).",
-      );
+      const s = historyStatus;
+      if (!s) {
+        showMessage(t("history.inactiveToast"));
+        return;
+      }
+      if (s.promptEnable) {
+        historyPromptEnableOpen = true;
+        return;
+      }
+      if (s.promptExistingGit) {
+        historyPromptExistingOpen = true;
+        return;
+      }
+      historyPromptEnableOpen = true;
       return;
     }
+    aiPanelOpen = false;
     historyPanelOpen = true;
     await refreshHistoryCommits();
+  }
+
+  async function toggleHistoryPanel() {
+    if (historyPanelOpen) {
+      historyPanelOpen = false;
+      historyDiffOpen = false;
+      return;
+    }
+    await openHistoryPanel();
+  }
+
+  function toggleAiPanel() {
+    if (aiPanelOpen) {
+      aiPanelOpen = false;
+      return;
+    }
+    historyPanelOpen = false;
+    historyDiffOpen = false;
+    aiPanelOpen = true;
   }
 
   async function handleHistorySnapshot() {
@@ -770,6 +966,7 @@
   onDestroy(() => {
     if (saveTimer) clearTimeout(saveTimer);
     if (diagnosticsTimer) clearTimeout(diagnosticsTimer);
+    if (previewSourceScrollTimer) clearTimeout(previewSourceScrollTimer);
     clearHistoryIdleTimer();
     if (bibTinymistTimer) clearTimeout(bibTinymistTimer);
   });
@@ -784,6 +981,7 @@
   /** Write without updating UI; used when switching files so the tab change is not blocked. */
   async function flushPathToDisk(path: string, text: string): Promise<void> {
     await writeTextFile(path, text);
+    bumpHistoryIdleTimer();
   }
 
   function scheduleSave() {
@@ -819,6 +1017,19 @@
     }, DIAGNOSTICS_DEBOUNCE_MS);
   }
 
+  function schedulePreviewSourceScroll(line0: number, character: number) {
+    if (!selectedPath?.endsWith(".typ")) return;
+    if (!previewUrl) return;
+    if (splitDragging) return;
+    const rel = selectedPath;
+    if (previewSourceScrollTimer) clearTimeout(previewSourceScrollTimer);
+    previewSourceScrollTimer = setTimeout(() => {
+      previewSourceScrollTimer = null;
+      if (selectedPath !== rel) return;
+      void tinymistPanelScrollToSource(rel, line0, character).catch(() => {});
+    }, PREVIEW_SOURCE_SCROLL_DEBOUNCE_MS);
+  }
+
   async function refreshDiagnostics() {
     if (!selectedPath?.endsWith(".typ")) return;
     const pathWhenStarted = selectedPath;
@@ -849,6 +1060,7 @@
   }
 
   function selectFile(p: string) {
+    if (!p.toLowerCase().endsWith(".typ")) return;
     if (p === selectedPath) return;
     if (saveTimer) {
       clearTimeout(saveTimer);
@@ -857,6 +1069,10 @@
     if (diagnosticsTimer) {
       clearTimeout(diagnosticsTimer);
       diagnosticsTimer = null;
+    }
+    if (previewSourceScrollTimer) {
+      clearTimeout(previewSourceScrollTimer);
+      previewSourceScrollTimer = null;
     }
     const prevPath = selectedPath;
     const prevBuffer = buffer;
@@ -912,7 +1128,11 @@
     } catch {
       /* best effort */
     }
-    await closeProject();
+    try {
+      await closeProject();
+    } catch {
+      /* Still leave the IDE: a failed backend close must not trap the user here. */
+    }
     await goto("/");
   }
 
@@ -992,7 +1212,7 @@
 
 <div class="ide">
   <header class="bar">
-    <button type="button" class="ghost" onclick={goHub}>
+    <button type="button" class="ghost bar-back" onclick={goHub}>
       {t("project.backToProjects")}
     </button>
     <button
@@ -1023,14 +1243,82 @@
       <span class="pill" data-state={previewLabel}>{previewStatusLabel()}</span>
     </span>
     <span class="spacer"></span>
-    <button type="button" class="action" onclick={() => void openHistoryPanel()}>
-      History
+    <button
+      type="button"
+      class="bar-icon-action"
+      onclick={toggleAiPanel}
+      title={t("project.aiToolbar")}
+      aria-label={t("project.aiToolbar")}
+      aria-pressed={aiPanelOpen}
+    >
+      <svg
+        width="18"
+        height="18"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path
+          d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"
+        />
+        <path d="M5 3v4" />
+        <path d="M19 17v4" />
+        <path d="M3 5h4" />
+        <path d="M17 19h4" />
+      </svg>
     </button>
-    <button type="button" class="action" onclick={compileNow}>
-      {t("project.compile")}
+    <button
+      type="button"
+      class="bar-icon-action"
+      onclick={() => void toggleHistoryPanel()}
+      title={historyActive ? t("history.toolbar") : t("history.toolbarEnable")}
+      aria-label={historyActive ? t("history.toolbar") : t("history.toolbarEnable")}
+      aria-pressed={historyPanelOpen}
+    >
+      <svg
+        width="18"
+        height="18"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <line x1="6" y1="3" x2="6" y2="15" />
+        <circle cx="18" cy="6" r="3" />
+        <circle cx="6" cy="18" r="3" />
+        <path d="M18 9v9a3 3 0 0 1-3 3H9" />
+      </svg>
     </button>
-    <button type="button" class="action" onclick={doExport}>
-      {t("project.exportPdf")}
+    <button
+      type="button"
+      class="bar-icon-action"
+      onclick={doExport}
+      title={t("project.exportPdf")}
+      aria-label={t("project.exportPdf")}
+    >
+      <svg
+        width="18"
+        height="18"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" />
+        <path d="M14 2v4a2 2 0 0 0 2 2h4" />
+        <path d="M12 18v-6" />
+        <path d="m9 15 3 3 3-3" />
+      </svg>
     </button>
   </header>
 
@@ -1047,6 +1335,8 @@
         onNewFile={handleNewFile}
         onNewFolder={handleNewFolder}
         onMoveFile={handleMoveFile}
+        onRenameItem={openTreeRename}
+        onDeleteItem={openTreeDelete}
       />
     </aside>
     <div
@@ -1069,11 +1359,22 @@
         reloadTick={editorReloadTick}
         reloadFromDiskTick={reloadFromDiskTick}
         hostCommands={editorHostCommands}
+        aiEditorRef={aiEditorRef}
         onDocumentChange={onEditorChange}
         onReady={onEditorReady}
+        onTypstPreviewSourceScroll={(pos) =>
+          schedulePreviewSourceScroll(pos.line0, pos.character)}
         compileDiagnostics={diagnostics}
         focusDiagnosticRequest={diagnosticFocus}
         {previewScroll}
+        onBinaryAssetCreated={(rel) => {
+          projectEntries = upsertProjectEntries(
+            projectEntries,
+            ...entriesForNewFile(rel),
+          );
+          void historyCheckpoint("paste-image", true).catch(() => {});
+        }}
+        onPasteImageError={showMessage}
       />
       <DiagnosticsPanel {diagnostics} onJumpTo={jumpToDiagnosticInEditor} />
     </section>
@@ -1144,6 +1445,18 @@
     onSubmit={(v) => void confirmNewFolder(v)}
   />
   <InputModal
+    open={treeRenameModalOpen}
+    title={t("fileTree.renameItemTitle")}
+    hint={t("fileTree.renameItemHint")}
+    initialValue={treeRenameSourcePath ? treeItemBasename(treeRenameSourcePath) : ""}
+    submitLabel={t("project.renameSubmit")}
+    onClose={() => {
+      treeRenameModalOpen = false;
+      treeRenameSourcePath = null;
+    }}
+    onSubmit={(v) => void confirmTreeRename(v)}
+  />
+  <InputModal
     open={projectRenameModalOpen}
     title={t("project.renameTitle")}
     hint={t("project.renameHint")}
@@ -1159,39 +1472,63 @@
   />
 
   <ConfirmModal
+    open={treeDeleteModalOpen}
+    title={t("fileTree.deleteItemTitle")}
+    message={treeDeletePath
+      ? t("fileTree.deleteItemMessage", { path: treeDeletePath })
+      : ""}
+    confirmLabel={t("fileTree.deleteConfirm")}
+    cancelLabel={t("common.cancel")}
+    onConfirm={() => void confirmTreeDelete()}
+    onCancel={() => {
+      treeDeleteModalOpen = false;
+      treeDeletePath = null;
+    }}
+  />
+
+  <ConfirmModal
     open={historyPromptEnableOpen}
-    title="Projekt-Verlauf"
-    message={`Git-basierte Änderungshistorie für dieses Projekt aktivieren?\n\nCheckpoints landen unter refs/paperdesk/history und ändern deinen Git-HEAD nicht.`}
-    confirmLabel="Aktivieren"
-    cancelLabel="Nicht jetzt"
+    title={t("history.promptEnableTitle")}
+    message={t("history.promptEnableMessage")}
+    confirmLabel={t("history.promptEnableConfirm")}
+    cancelLabel={t("history.promptEnableCancel")}
     onConfirm={() => void onHistoryEnableYes()}
     onCancel={() => void onHistoryEnableNo()}
   />
 
   <ConfirmModal
     open={historyPromptExistingOpen}
-    title="Vorhandenes Git-Repository"
-    message="In diesem Ordner gibt es bereits ein .git-Verzeichnis. Soll PaperDesk die Historie dort speichern (empfohlen)?\n\n„Nein“ deaktiviert den Verlauf für dieses Projekt."
-    confirmLabel="Ja, nutzen"
-    cancelLabel="Nein"
+    title={t("history.promptExistingTitle")}
+    message={t("history.promptExistingMessage")}
+    confirmLabel={t("history.promptExistingConfirm")}
+    cancelLabel={t("history.promptExistingCancel")}
     onConfirm={() => void onHistoryExistingYes()}
     onCancel={() => void onHistoryExistingNo()}
   />
 
   <ConfirmModal
     open={historyRestoreCommitId !== null}
-    title="Stand wiederherstellen?"
-    message="Der ausgewählte Checkpoint wird in das Arbeitsverzeichnis geschrieben (bestehende Dateien werden überschrieben). Fortfahren?"
-    confirmLabel="Wiederherstellen"
-    cancelLabel="Abbrechen"
+    title={t("history.restoreTitle")}
+    message={t("history.restoreMessage")}
+    confirmLabel={t("history.restoreConfirm")}
+    cancelLabel={t("common.cancel")}
     onConfirm={() => void confirmHistoryRestore()}
     onCancel={() => (historyRestoreCommitId = null)}
+  />
+
+  <AiAssistantPanel
+    open={aiPanelOpen}
+    onClose={() => (aiPanelOpen = false)}
+    editorContext={aiEditorRef}
   />
 
   <HistoryPanel
     open={historyPanelOpen}
     commits={historyCommits}
     busy={historyBusy}
+    refreshing={historyRefreshing}
+    tipShort={historyStatus?.tipShort ?? null}
+    historyRefExists={historyStatus?.historyRefExists ?? false}
     diffText={historyDiffText}
     diffOpen={historyDiffOpen}
     onClose={() => {
@@ -1286,6 +1623,10 @@
     color: var(--pd-text);
   }
 
+  .bar-back {
+    flex-shrink: 0;
+  }
+
   .proj-rename {
     display: inline-flex;
     align-items: center;
@@ -1342,17 +1683,26 @@
     flex: 1;
   }
 
-  .action {
-    padding: 0.4rem 0.75rem;
+  .bar-icon-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.35rem;
     border-radius: 6px;
     border: 1px solid var(--pd-border);
     background: var(--pd-bg);
     color: var(--pd-text);
-    font-size: 1rem;
+    flex-shrink: 0;
+    cursor: pointer;
   }
 
-  .action:hover {
+  .bar-icon-action:hover {
     border-color: var(--pd-muted);
+  }
+
+  .bar-icon-action:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--pd-accent) 55%, transparent);
+    outline-offset: 2px;
   }
 
   .main {

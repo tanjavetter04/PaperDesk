@@ -10,20 +10,26 @@ use std::sync::Mutex;
 
 use tauri::Manager;
 
+use commands::ai::{ai_chat, ai_get_status, ai_set_config};
+use commands::clipboard_paste::clipboard_paste_for_typst;
 use commands::compile_cmd::{compile_project, compile_project_at_path, export_pdf_to_path};
 use commands::fs::{
-    create_project_dir, list_project_files, move_project_path, read_text_file, write_text_file,
+    create_project_dir, delete_project_path, list_project_files, move_project_path, read_text_file,
+    write_binary_file, write_text_file,
 };
 use commands::history_cmd::{
     history_checkpoint, history_diff_workdir, history_get_status, history_list_commits,
     history_respond_enable, history_respond_existing_git, history_restore,
 };
 use commands::project::{
-    add_recent_project, close_project, create_empty_project, create_from_template, get_open_project,
-    get_recent_projects, open_project, rename_project,
+    add_recent_project, close_project, create_empty_project, create_from_template, delete_project,
+    duplicate_project, get_open_project, get_recent_projects, open_project, rename_project,
 };
 use bib_watch::restart_bib_watcher;
-use tinymist_preview::{restart_tinymist_preview, start_tinymist_preview, TinymistSession};
+use tinymist_preview::{
+    restart_tinymist_preview, start_tinymist_preview, tinymist_panel_scroll_to_source,
+    TinymistSession,
+};
 
 /// Shared application state (current project + paths).
 pub struct AppState {
@@ -92,13 +98,18 @@ pub fn run() {
             add_recent_project,
             open_project,
             rename_project,
+            duplicate_project,
+            delete_project,
             get_open_project,
             close_project,
             list_project_files,
             create_project_dir,
             move_project_path,
+            delete_project_path,
             read_text_file,
             write_text_file,
+            write_binary_file,
+            clipboard_paste_for_typst,
             compile_project,
             compile_project_at_path,
             export_pdf_to_path,
@@ -106,6 +117,7 @@ pub fn run() {
             create_empty_project,
             start_tinymist_preview,
             restart_tinymist_preview,
+            tinymist_panel_scroll_to_source,
             history_get_status,
             history_respond_enable,
             history_respond_existing_git,
@@ -114,6 +126,9 @@ pub fn run() {
             history_diff_workdir,
             history_restore,
             restart_bib_watcher,
+            ai_get_status,
+            ai_set_config,
+            ai_chat,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -3,14 +3,18 @@
   import { goto } from "$app/navigation";
   import {
     getRecentProjects,
+    getOpenProject,
     openProject,
     pickProjectFolder,
     createFromTemplate,
     createEmptyProject,
     renameProject,
+    duplicateProject,
+    deleteProject,
   } from "$lib/tauri/api";
   import RecentProjectRow from "$lib/components/RecentProjectRow.svelte";
   import InputModal from "$lib/components/InputModal.svelte";
+  import ConfirmModal from "$lib/components/ConfirmModal.svelte";
   import { appSettings } from "$lib/appSettings.svelte";
   import { t } from "$lib/i18n/locale.svelte";
   import { openSettingsModal } from "$lib/settingsModal.svelte";
@@ -21,6 +25,10 @@
   let selectedFolder = $state<string | null>(null);
   let renameModalOpen = $state(false);
   let renamePath = $state<string | null>(null);
+  let duplicateModalOpen = $state(false);
+  let duplicatePath = $state<string | null>(null);
+  let deleteConfirmOpen = $state(false);
+  let deleteTargetPath = $state<string | null>(null);
   let newProjectModalOpen = $state(false);
   let newProjectParent = $state<string | null>(null);
   let newProjectKind = $state<"empty" | "thesis" | null>(null);
@@ -80,6 +88,12 @@
     );
     return out;
   });
+
+  const duplicateInitialFolderName = $derived(
+    duplicatePath
+      ? `${folderDisplayName(duplicatePath)} ${t("project.duplicateDefaultSuffix")}`
+      : "",
+  );
 
   const projectsInSelectedFolder = $derived.by(() => {
     const folder = selectedFolder;
@@ -154,11 +168,11 @@
     error = null;
     busy = true;
     try {
-      if (kind === "thesis") {
-        await createFromTemplate("thesis", parent, name);
-      } else {
-        await createEmptyProject(parent, name);
-      }
+      const projectPath =
+        kind === "thesis"
+          ? await createFromTemplate("thesis", parent, name)
+          : await createEmptyProject(parent, name);
+      await openProject(projectPath);
       closeNewProjectModal();
       await goto("/project");
     } catch (e) {
@@ -204,6 +218,60 @@
       await renameProject(renamePath, name);
       closeRenameModal();
       await refresh();
+    } catch (e) {
+      error = String(e);
+    } finally {
+      busy = false;
+    }
+  }
+
+  function openDuplicateModal(projectPath: string) {
+    duplicatePath = projectPath;
+    duplicateModalOpen = true;
+  }
+
+  function closeDuplicateModal() {
+    duplicateModalOpen = false;
+    duplicatePath = null;
+  }
+
+  async function submitProjectDuplicate(name: string) {
+    if (!duplicatePath) return;
+    error = null;
+    busy = true;
+    try {
+      await duplicateProject(duplicatePath, name);
+      closeDuplicateModal();
+      await refresh();
+    } catch (e) {
+      error = String(e);
+    } finally {
+      busy = false;
+    }
+  }
+
+  function openDeleteConfirm(projectPath: string) {
+    deleteTargetPath = projectPath;
+    deleteConfirmOpen = true;
+  }
+
+  function closeDeleteConfirm() {
+    deleteConfirmOpen = false;
+    deleteTargetPath = null;
+  }
+
+  async function confirmDeleteProject() {
+    if (!deleteTargetPath) return;
+    error = null;
+    busy = true;
+    try {
+      await deleteProject(deleteTargetPath);
+      closeDeleteConfirm();
+      await refresh();
+      const stillOpen = await getOpenProject();
+      if (!stillOpen) {
+        await goto("/");
+      }
     } catch (e) {
       error = String(e);
     } finally {
@@ -301,7 +369,11 @@
               {busy}
               onclick={() => openRecent(p)}
               onRename={() => openRenameModal(p)}
+              onDuplicate={() => openDuplicateModal(p)}
+              onDelete={() => openDeleteConfirm(p)}
               renameAria={t("project.renameAria")}
+              duplicateAria={t("project.duplicateAria")}
+              deleteAria={t("project.deleteAria")}
             />
           {/each}
         </ul>
@@ -351,29 +423,80 @@
                         <span class="folder-project-name">{folderDisplayName(p)}</span>
                         <span class="folder-project-path">{p}</span>
                       </button>
-                      <button
-                        type="button"
-                        class="folder-project-rename"
-                        disabled={busy}
-                        onclick={() => openRenameModal(p)}
-                        title={t("project.renameAria")}
-                        aria-label={t("project.renameAria")}
-                      >
-                        <svg
-                          width="18"
-                          height="18"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          stroke-width="2"
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          aria-hidden="true"
+                      <div class="folder-project-actions">
+                        <button
+                          type="button"
+                          class="folder-project-icon-btn"
+                          disabled={busy}
+                          onclick={() => openDuplicateModal(p)}
+                          title={t("project.duplicateAria")}
+                          aria-label={t("project.duplicateAria")}
                         >
-                          <path d="M12 20h9" />
-                          <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
-                        </svg>
-                      </button>
+                          <svg
+                            width="18"
+                            height="18"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            aria-hidden="true"
+                          >
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                          </svg>
+                        </button>
+                        <button
+                          type="button"
+                          class="folder-project-icon-btn"
+                          disabled={busy}
+                          onclick={() => openRenameModal(p)}
+                          title={t("project.renameAria")}
+                          aria-label={t("project.renameAria")}
+                        >
+                          <svg
+                            width="18"
+                            height="18"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            aria-hidden="true"
+                          >
+                            <path d="M12 20h9" />
+                            <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                          </svg>
+                        </button>
+                        <button
+                          type="button"
+                          class="folder-project-icon-btn folder-project-icon-btn-danger"
+                          disabled={busy}
+                          onclick={() => openDeleteConfirm(p)}
+                          title={t("project.deleteAria")}
+                          aria-label={t("project.deleteAria")}
+                        >
+                          <svg
+                            width="18"
+                            height="18"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            aria-hidden="true"
+                          >
+                            <path d="M3 6h18" />
+                            <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+                            <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+                            <line x1="10" x2="10" y1="11" y2="17" />
+                            <line x1="14" x2="14" y1="11" y2="17" />
+                          </svg>
+                        </button>
+                      </div>
                     </div>
                   </li>
                 {/each}
@@ -414,6 +537,29 @@
     submitLabel={t("project.renameSubmit")}
     onSubmit={(v) => void submitProjectRename(v)}
     onClose={closeRenameModal}
+  />
+  <InputModal
+    open={duplicateModalOpen}
+    title={t("project.duplicateTitle")}
+    hint={t("project.duplicateHint")}
+    initialValue={duplicateInitialFolderName}
+    submitLabel={t("project.duplicateSubmit")}
+    onSubmit={(v) => void submitProjectDuplicate(v)}
+    onClose={closeDuplicateModal}
+  />
+  <ConfirmModal
+    open={deleteConfirmOpen}
+    title={t("project.deleteTitle")}
+    message={deleteTargetPath
+      ? t("project.deleteMessage", {
+          name: folderDisplayName(deleteTargetPath),
+          path: deleteTargetPath,
+        })
+      : ""}
+    confirmLabel={t("project.deleteConfirm")}
+    cancelLabel={t("common.cancel")}
+    onConfirm={() => void confirmDeleteProject()}
+    onCancel={closeDeleteConfirm}
   />
   <InputModal
     open={newProjectModalOpen}
@@ -625,15 +771,25 @@
   .folder-project-row .folder-project-btn {
     flex: 1;
     min-width: 0;
-    padding-right: 2.65rem;
+    padding-right: 3.2rem;
   }
 
-  .folder-project-rename {
+  .folder-project-actions {
     position: absolute;
     top: 50%;
-    right: 0.4rem;
+    right: 0.35rem;
     transform: translateY(-50%);
     z-index: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.28rem;
+    transition:
+      opacity 0.12s ease,
+      visibility 0.12s ease;
+  }
+
+  .folder-project-icon-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -647,38 +803,40 @@
     color: var(--pd-muted);
     cursor: pointer;
     box-shadow: 0 2px 8px rgb(0 0 0 / 0.18);
-    transition:
-      opacity 0.12s ease,
-      visibility 0.12s ease;
+  }
+
+  .folder-project-icon-btn-danger:hover:not(:disabled) {
+    border-color: color-mix(in srgb, var(--pd-error) 45%, var(--pd-border));
+    color: var(--pd-error);
   }
 
   @media (hover: hover) {
-    .folder-project-rename {
+    .folder-project-actions {
       opacity: 0;
       visibility: hidden;
       pointer-events: none;
     }
 
-    .folder-project-row:hover .folder-project-rename,
-    .folder-project-row:focus-within .folder-project-rename {
+    .folder-project-row:hover .folder-project-actions,
+    .folder-project-row:focus-within .folder-project-actions {
       opacity: 1;
       visibility: visible;
       pointer-events: auto;
     }
 
-    .folder-project-row:hover .folder-project-rename:disabled,
-    .folder-project-row:focus-within .folder-project-rename:disabled {
+    .folder-project-row:hover .folder-project-actions .folder-project-icon-btn:disabled,
+    .folder-project-row:focus-within .folder-project-actions .folder-project-icon-btn:disabled {
       opacity: 0.45;
     }
   }
 
-  .folder-project-rename:hover:not(:disabled) {
+  .folder-project-icon-btn:hover:not(:disabled) {
     border-color: var(--pd-muted);
     color: var(--pd-text);
     background: var(--pd-bg);
   }
 
-  .folder-project-rename:disabled {
+  .folder-project-icon-btn:disabled {
     opacity: 0.45;
     cursor: not-allowed;
   }

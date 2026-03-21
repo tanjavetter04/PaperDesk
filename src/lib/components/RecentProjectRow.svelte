@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { tick } from "svelte";
   import { compileProjectAtPath } from "$lib/tauri/api";
   import { renderFirstPageThumbFromBase64 } from "$lib/pdf/renderFirstPageThumb";
 
@@ -9,42 +8,26 @@
     busy,
     onclick,
     onRename,
+    onDuplicate,
+    onDelete,
     renameAria,
+    duplicateAria,
+    deleteAria,
   }: {
     path: string;
     displayName: string;
     busy: boolean;
     onclick: () => void;
     onRename: () => void;
+    onDuplicate: () => void;
+    onDelete: () => void;
     renameAria: string;
+    duplicateAria: string;
+    deleteAria: string;
   } = $props();
 
   let thumbUrl = $state<string | null>(null);
   let thumbPhase = $state<"loading" | "ready" | "miss">("loading");
-  let titleEl = $state<HTMLSpanElement | null>(null);
-  let nameTruncated = $state(false);
-
-  function measureNameTruncation() {
-    const el = titleEl;
-    if (!el) {
-      nameTruncated = false;
-      return;
-    }
-    nameTruncated = el.scrollWidth > el.clientWidth + 0.5;
-  }
-
-  $effect(() => {
-    displayName;
-    void tick().then(measureNameTruncation);
-  });
-
-  $effect(() => {
-    const el = titleEl;
-    if (!el) return;
-    const ro = new ResizeObserver(() => measureNameTruncation());
-    ro.observe(el);
-    return () => ro.disconnect();
-  });
 
   $effect(() => {
     const projectPath = path;
@@ -91,37 +74,83 @@
           <span class="thumb-fallback">PDF</span>
         {/if}
       </div>
-      <span class="title-stack" class:is-truncated={nameTruncated}>
-        <span class="recent-title" bind:this={titleEl}>{displayName}</span>
-        {#if nameTruncated}
-          <span class="name-tooltip" aria-hidden="true">{displayName}</span>
-        {/if}
-      </span>
+      <span class="recent-title">{displayName}</span>
       <span class="recent-path">{path}</span>
     </button>
-    <button
-      type="button"
-      class="recent-rename"
-      disabled={busy}
-      onclick={onRename}
-      title={renameAria}
-      aria-label={renameAria}
-    >
-      <svg
-        width="18"
-        height="18"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        aria-hidden="true"
+    <div class="recent-actions">
+      <button
+        type="button"
+        class="recent-action"
+        disabled={busy}
+        onclick={onDuplicate}
+        title={duplicateAria}
+        aria-label={duplicateAria}
       >
-        <path d="M12 20h9" />
-        <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
-      </svg>
-    </button>
+        <svg
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+        </svg>
+      </button>
+      <button
+        type="button"
+        class="recent-action"
+        disabled={busy}
+        onclick={onRename}
+        title={renameAria}
+        aria-label={renameAria}
+      >
+        <svg
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M12 20h9" />
+          <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+        </svg>
+      </button>
+      <button
+        type="button"
+        class="recent-action recent-action-danger"
+        disabled={busy}
+        onclick={onDelete}
+        title={deleteAria}
+        aria-label={deleteAria}
+      >
+        <svg
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M3 6h18" />
+          <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+          <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+          <line x1="10" x2="10" y1="11" y2="17" />
+          <line x1="14" x2="14" y1="11" y2="17" />
+        </svg>
+      </button>
+    </div>
   </div>
 </li>
 
@@ -139,11 +168,21 @@
     vertical-align: top;
   }
 
-  .recent-rename {
+  .recent-actions {
     position: absolute;
-    top: 0.45rem;
-    right: 0.55rem;
+    top: 0.35rem;
+    right: 0.45rem;
     z-index: 3;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.28rem;
+    transition:
+      opacity 0.12s ease,
+      visibility 0.12s ease;
+  }
+
+  .recent-action {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -157,38 +196,40 @@
     color: var(--pd-muted);
     cursor: pointer;
     box-shadow: 0 2px 10px rgb(0 0 0 / 0.2);
-    transition:
-      opacity 0.12s ease,
-      visibility 0.12s ease;
+  }
+
+  .recent-action-danger:hover:not(:disabled) {
+    border-color: color-mix(in srgb, var(--pd-error) 45%, var(--pd-border));
+    color: var(--pd-error);
   }
 
   @media (hover: hover) {
-    .recent-rename {
+    .recent-actions {
       opacity: 0;
       visibility: hidden;
       pointer-events: none;
     }
 
-    .recent-row:hover .recent-rename,
-    .recent-row:focus-within .recent-rename {
+    .recent-row:hover .recent-actions,
+    .recent-row:focus-within .recent-actions {
       opacity: 1;
       visibility: visible;
       pointer-events: auto;
     }
 
-    .recent-row:hover .recent-rename:disabled,
-    .recent-row:focus-within .recent-rename:disabled {
+    .recent-row:hover .recent-actions .recent-action:disabled,
+    .recent-row:focus-within .recent-actions .recent-action:disabled {
       opacity: 0.45;
     }
   }
 
-  .recent-rename:hover:not(:disabled) {
+  .recent-action:hover:not(:disabled) {
     border-color: var(--pd-muted);
     color: var(--pd-text);
     background: var(--pd-bg);
   }
 
-  .recent-rename:disabled {
+  .recent-action:disabled {
     opacity: 0.45;
     cursor: not-allowed;
   }
@@ -254,17 +295,6 @@
       color-mix(in srgb, var(--pd-muted) 32%, transparent) 45%,
       color-mix(in srgb, var(--pd-muted) 18%, transparent) 90%
     );
-    animation: thumb-pulse 1.1s ease-in-out infinite;
-  }
-
-  @keyframes thumb-pulse {
-    0%,
-    100% {
-      opacity: 0.55;
-    }
-    50% {
-      opacity: 1;
-    }
   }
 
   .thumb-img {
@@ -283,12 +313,6 @@
     text-transform: uppercase;
   }
 
-  .title-stack {
-    position: relative;
-    width: 100%;
-    min-width: 0;
-  }
-
   .recent-title {
     font-weight: 500;
     font-size: 1rem;
@@ -299,44 +323,6 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  .name-tooltip {
-    position: absolute;
-    left: 50%;
-    bottom: calc(100% + 6px);
-    transform: translateX(-50%);
-    /* One line as wide as the text needs; cap = title area (= card). Only then wrap. */
-    box-sizing: border-box;
-    width: max-content;
-    max-width: 100%;
-    padding: 0.35rem 0.55rem;
-    font-size: 1rem;
-    font-weight: 500;
-    line-height: 1.35;
-    text-align: center;
-    white-space: normal;
-    overflow-wrap: break-word;
-    color: var(--pd-text);
-    background: var(--pd-surface);
-    border: 1px solid var(--pd-border);
-    border-radius: 6px;
-    box-shadow: 0 6px 20px rgb(0 0 0 / 0.38);
-    pointer-events: none;
-    z-index: 2;
-    opacity: 0;
-    visibility: hidden;
-  }
-
-  .recent-card:hover:not(:disabled):has(.title-stack.is-truncated) .name-tooltip {
-    opacity: 1;
-    visibility: visible;
-  }
-
-  .recent-card:hover:not(:disabled):has(.title-stack.is-truncated) .recent-title {
-    text-decoration: underline dotted;
-    text-decoration-color: color-mix(in srgb, var(--pd-muted) 65%, var(--pd-text));
-    text-underline-offset: 0.12em;
   }
 
   .recent-path {
