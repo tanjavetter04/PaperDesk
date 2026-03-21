@@ -19,12 +19,38 @@
     onClose: () => void;
   } = $props();
 
+  /** Native `<select>` popups stay dark on some WebKit/GTK builds; custom list uses app colors only. */
+  let localeMenuOpen = $state(false);
+  let themeMenuOpen = $state(false);
+  let langRoot = $state<HTMLDivElement | null>(null);
+  let themeRoot = $state<HTMLDivElement | null>(null);
+
+  $effect(() => {
+    if (!open) {
+      localeMenuOpen = false;
+      themeMenuOpen = false;
+    }
+  });
+
+  function onDocPointerDown(e: PointerEvent) {
+    if (!localeMenuOpen && !themeMenuOpen) return;
+    const node = e.target as Node;
+    if (localeMenuOpen && langRoot && !langRoot.contains(node)) {
+      localeMenuOpen = false;
+    }
+    if (themeMenuOpen && themeRoot && !themeRoot.contains(node)) {
+      themeMenuOpen = false;
+    }
+  }
+
   function pickLocale(next: Locale) {
     setLocale(next);
+    localeMenuOpen = false;
   }
 
   function pickTheme(next: ThemeMode) {
     setTheme(next);
+    themeMenuOpen = false;
   }
 
   async function chooseDefaultProjectFolder() {
@@ -34,6 +60,8 @@
     if (p) setDefaultProjectDir(p);
   }
 </script>
+
+<svelte:window onpointerdown={onDocPointerDown} />
 
 {#if open}
   <div
@@ -50,25 +78,91 @@
     <h2 id="settings-title">{t("settings.title")}</h2>
     <label class="field">
       {t("settings.language")}
-      <select
-        class="select"
-        value={locale.value}
-        onchange={(e) => pickLocale(e.currentTarget.value as Locale)}
-      >
-        <option value="de">{t("settings.languageDe")}</option>
-        <option value="en">{t("settings.languageEn")}</option>
-      </select>
+      <div class="custom-select" bind:this={langRoot}>
+        <button
+          type="button"
+          class="custom-select-trigger"
+          aria-haspopup="listbox"
+          aria-expanded={localeMenuOpen}
+          aria-label={t("settings.language")}
+          onclick={() => {
+            themeMenuOpen = false;
+            localeMenuOpen = !localeMenuOpen;
+          }}
+        >
+          <span
+            >{locale.value === "de"
+              ? t("settings.languageDe")
+              : t("settings.languageEn")}</span
+          >
+        </button>
+        {#if localeMenuOpen}
+          <div class="custom-select-list" role="listbox">
+            <button
+              type="button"
+              role="option"
+              class="custom-select-option"
+              aria-selected={locale.value === "de"}
+              onclick={() => pickLocale("de")}
+            >
+              {t("settings.languageDe")}
+            </button>
+            <button
+              type="button"
+              role="option"
+              class="custom-select-option"
+              aria-selected={locale.value === "en"}
+              onclick={() => pickLocale("en")}
+            >
+              {t("settings.languageEn")}
+            </button>
+          </div>
+        {/if}
+      </div>
     </label>
     <label class="field">
       {t("settings.theme")}
-      <select
-        class="select"
-        value={appSettings.theme}
-        onchange={(e) => pickTheme(e.currentTarget.value as ThemeMode)}
-      >
-        <option value="dark">{t("settings.themeDark")}</option>
-        <option value="light">{t("settings.themeLight")}</option>
-      </select>
+      <div class="custom-select" bind:this={themeRoot}>
+        <button
+          type="button"
+          class="custom-select-trigger"
+          aria-haspopup="listbox"
+          aria-expanded={themeMenuOpen}
+          aria-label={t("settings.theme")}
+          onclick={() => {
+            localeMenuOpen = false;
+            themeMenuOpen = !themeMenuOpen;
+          }}
+        >
+          <span
+            >{appSettings.theme === "dark"
+              ? t("settings.themeDark")
+              : t("settings.themeLight")}</span
+          >
+        </button>
+        {#if themeMenuOpen}
+          <div class="custom-select-list" role="listbox">
+            <button
+              type="button"
+              role="option"
+              class="custom-select-option"
+              aria-selected={appSettings.theme === "dark"}
+              onclick={() => pickTheme("dark")}
+            >
+              {t("settings.themeDark")}
+            </button>
+            <button
+              type="button"
+              role="option"
+              class="custom-select-option"
+              aria-selected={appSettings.theme === "light"}
+              onclick={() => pickTheme("light")}
+            >
+              {t("settings.themeLight")}
+            </button>
+          </div>
+        {/if}
+      </div>
     </label>
     <label class="field">
       {t("settings.fontSize")}
@@ -205,36 +299,78 @@
     font-size: 0.95rem;
   }
 
-  .select {
+  .custom-select {
+    position: relative;
+  }
+
+  .custom-select-trigger {
+    box-sizing: border-box;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
     padding: 0.45rem 0.55rem;
     padding-right: 1.85rem;
     border-radius: 6px;
     border: 1px solid var(--pd-border);
     background-color: var(--pd-bg);
-    color: var(--pd-text);
-    font-size: 1rem;
-    font-family: var(--pd-font), system-ui, sans-serif;
-    accent-color: var(--pd-accent);
-    appearance: none;
-    -webkit-appearance: none;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none'%3E%3Cpath d='M3 4.5L6 7.5L9 4.5' stroke='%23868e96' stroke-width='1.25' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 0.45rem center;
+    color: var(--pd-text);
+    font-size: 1rem;
+    font-family: var(--pd-font), system-ui, sans-serif;
+    text-align: left;
     cursor: pointer;
+    accent-color: var(--pd-accent);
   }
 
-  :global(:root[data-theme="light"]) .select {
-    color-scheme: light;
+  :global(:root[data-theme="light"]) .custom-select-trigger {
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none'%3E%3Cpath d='M3 4.5L6 7.5L9 4.5' stroke='%236c757d' stroke-width='1.25' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   }
 
-  :global(:root[data-theme="dark"]) .select {
-    color-scheme: dark;
-  }
-
-  .select:focus {
+  .custom-select-trigger:focus {
     outline: 2px solid color-mix(in srgb, var(--pd-accent) 45%, transparent);
     outline-offset: 1px;
+  }
+
+  .custom-select-list {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(100% + 4px);
+    z-index: 320;
+    margin: 0;
+    padding: 0.3rem 0;
+    border-radius: 6px;
+    border: 1px solid var(--pd-border);
+    background: var(--pd-surface);
+    color: var(--pd-text);
+    box-shadow: 0 10px 28px rgb(0 0 0 / 0.18);
+    max-height: 14rem;
+    overflow: auto;
+  }
+
+  .custom-select-option {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0.5rem 0.65rem;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    font: inherit;
+    font-size: 1rem;
+    color: var(--pd-text);
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .custom-select-option:hover,
+  .custom-select-option[aria-selected="true"] {
+    background: color-mix(in srgb, var(--pd-accent) 14%, var(--pd-bg));
   }
 
   .btns {
