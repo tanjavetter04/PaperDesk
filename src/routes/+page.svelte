@@ -10,6 +10,7 @@
   } from "$lib/tauri/api";
   import RecentProjectRow from "$lib/components/RecentProjectRow.svelte";
   import { t } from "$lib/i18n/locale.svelte";
+  import { openSettingsModal } from "$lib/settingsModal.svelte";
 
   let recent = $state<string[]>([]);
   let busy = $state(false);
@@ -153,7 +154,33 @@
 
 <main class="hub">
   <header class="hub-header">
-    <h1>{t("app.title")}</h1>
+    <div class="hub-header-top">
+      <h1>{t("app.title")}</h1>
+      <button
+        type="button"
+        class="hub-settings-btn"
+        onclick={openSettingsModal}
+        title={t("settings.open")}
+        aria-label={t("settings.open")}
+      >
+        <svg
+          width="22"
+          height="22"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />
+          <path
+            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1Z"
+          />
+        </svg>
+      </button>
+    </div>
     <p class="tagline">{t("app.tagline")}</p>
   </header>
 
@@ -161,20 +188,22 @@
     <p class="err" role="alert">{error}</p>
   {/if}
 
-  <section class="actions">
-    <button type="button" class="primary" disabled={busy} onclick={openFolder}>
-      {t("hub.openProjectFolder")}
-    </button>
-    <div class="templates">
-      <span class="label">{t("hub.newProject")}</span>
-      <button type="button" disabled={busy} onclick={newFromThesisTemplate}>
-        {t("hub.thesisTemplate")}
+  <div class="hub-actions-wrap">
+    <section class="actions">
+      <button type="button" class="primary" disabled={busy} onclick={openFolder}>
+        {t("hub.openProjectFolder")}
       </button>
-      <button type="button" disabled={busy} onclick={newEmptyProject}>
-        {t("hub.emptyProject")}
-      </button>
-    </div>
-  </section>
+      <div class="templates">
+        <span class="label">{t("hub.newProject")}</span>
+        <button type="button" disabled={busy} onclick={newFromThesisTemplate}>
+          {t("hub.thesisTemplate")}
+        </button>
+        <button type="button" disabled={busy} onclick={newEmptyProject}>
+          {t("hub.emptyProject")}
+        </button>
+      </div>
+    </section>
+  </div>
 
   <div class="hub-stack">
     <section class="recent">
@@ -304,11 +333,22 @@
     line-height: 1.35;
   }
 
-  .hub-header h1 {
-    margin: 0 0 0.35rem;
+  .hub-header-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 0.35rem;
+  }
+
+  .hub-header-top h1 {
+    margin: 0;
+    flex: 1;
+    min-width: 0;
     font-weight: 600;
     letter-spacing: -0.02em;
     font-size: 2rem;
+    line-height: 1.15;
   }
 
   .tagline {
@@ -322,8 +362,41 @@
     margin-top: 1.25rem;
   }
 
-  .actions {
+  .hub-actions-wrap {
     margin-top: 2rem;
+  }
+
+  .hub-settings-btn {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    padding: 0;
+    border-radius: 10px;
+    border: 1px solid color-mix(in srgb, var(--pd-accent) 42%, var(--pd-border));
+    background: color-mix(in srgb, var(--pd-accent) 22%, var(--pd-surface));
+    color: color-mix(in srgb, var(--pd-accent) 55%, var(--pd-text));
+    cursor: pointer;
+    box-shadow:
+      0 1px 0 color-mix(in srgb, var(--pd-accent) 22%, transparent),
+      0 4px 14px rgb(0 0 0 / 0.28);
+  }
+
+  .hub-settings-btn:hover {
+    color: var(--pd-text);
+    border-color: color-mix(in srgb, var(--pd-accent) 58%, var(--pd-border));
+    background: color-mix(in srgb, var(--pd-accent) 30%, var(--pd-surface));
+  }
+
+  .hub-settings-btn:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--pd-accent) 55%, transparent);
+    outline-offset: 2px;
+  }
+
+  .actions {
+    margin-top: 0;
     display: flex;
     flex-direction: column;
     gap: 1.25rem;

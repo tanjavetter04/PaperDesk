@@ -27,6 +27,7 @@
     ProjectEntry,
   } from "$lib/tauri/api";
   import { t } from "$lib/i18n/locale.svelte";
+  import { openSettingsModal } from "$lib/settingsModal.svelte";
 
   let rootPath = $state<string | null>(null);
   let projectEntries = $state<ProjectEntry[]>([]);
@@ -787,6 +788,31 @@
     </aside>
   </div>
 
+  <button
+    type="button"
+    class="ide-settings-fab"
+    onclick={openSettingsModal}
+    title={t("settings.open")}
+    aria-label={t("settings.open")}
+  >
+    <svg
+      width="22"
+      height="22"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />
+      <path
+        d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1Z"
+      />
+    </svg>
+  </button>
+
   <InputModal
     open={newFileModalOpen}
     title={t("project.newFileTitle")}
@@ -814,10 +840,43 @@
 
 <style>
   .ide {
+    position: relative;
     display: flex;
     flex-direction: column;
     height: 100vh;
     overflow: hidden;
+  }
+
+  .ide-settings-fab {
+    position: fixed;
+    left: 0.85rem;
+    bottom: 0.85rem;
+    z-index: 40;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    padding: 0;
+    border-radius: 10px;
+    border: 1px solid color-mix(in srgb, var(--pd-accent) 42%, var(--pd-border));
+    background: color-mix(in srgb, var(--pd-accent) 22%, var(--pd-surface));
+    color: color-mix(in srgb, var(--pd-accent) 55%, var(--pd-text));
+    cursor: pointer;
+    box-shadow:
+      0 1px 0 color-mix(in srgb, var(--pd-accent) 22%, transparent),
+      0 4px 14px rgb(0 0 0 / 0.28);
+  }
+
+  .ide-settings-fab:hover {
+    color: var(--pd-text);
+    border-color: color-mix(in srgb, var(--pd-accent) 58%, var(--pd-border));
+    background: color-mix(in srgb, var(--pd-accent) 30%, var(--pd-surface));
+  }
+
+  .ide-settings-fab:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--pd-accent) 55%, transparent);
+    outline-offset: 2px;
   }
 
   .bar {
