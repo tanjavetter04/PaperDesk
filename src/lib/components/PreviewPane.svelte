@@ -32,34 +32,15 @@
   let loaded = $state<{ doc: PDFDocumentProxy; url: string } | null>(null);
 
   let renderedAtWidth = $state(0);
-  let frameClientWidth = $state(0);
 
-  const displayScale = $derived.by(() => {
-    const rw = renderedAtWidth;
-    const cw = frameClientWidth;
-    if (rw <= 0 || cw <= 0) return 1;
-    return Math.min(4, Math.max(0.05, cw / rw));
-  });
-
-  const scaledContentHeight = $derived.by(() => {
-    void renderSerial;
-    void displayScale;
-    const root = pagesRoot;
-    if (!root) return 0;
-    return Math.max(0, root.offsetHeight * displayScale);
-  });
-
-  const renderedWidthRef = { current: 0 };
-  $effect(() => {
-    renderedWidthRef.current = renderedAtWidth;
-  });
+  /** rAF-throttled PDF re-layout on resize (avoid transform-scale, which breaks scrollIntoView). */
+  let resizeRaf = 0;
 
   $effect(() => {
     const url = showPdf ? pdfUrl : null;
     if (!url) {
       loadError = null;
       renderedAtWidth = 0;
-      frameClientWidth = 0;
       const cur = untrack(() => loaded);
       if (cur) {
         loaded = null;
@@ -161,7 +142,6 @@
         }
         if (!cancelled) {
           renderedAtWidth = cssW;
-          frameClientWidth = Math.round(wrap.clientWidth);
           renderSerial += 1;
         }
       } catch (e) {
@@ -190,35 +170,32 @@
 
     void tick().then(() => {
       const el = wrap.querySelector(`[data-page="${p}"]`);
-      el?.scrollIntoView({ block: "nearest", behavior: "auto" });
+      if (!el) return;
+      el.scrollIntoView({ block: "center", inline: "nearest", behavior: "auto" });
     });
   });
 
-  const RESIZE_SETTLE_MS = 280;
   $effect(() => {
     if (!showPdf) return;
 
     const wrap = slot;
     if (!wrap) return;
-    let settleTimer = 0;
 
     const ro = new ResizeObserver(() => {
-      frameClientWidth = Math.round(wrap.clientWidth);
-      clearTimeout(settleTimer);
-      settleTimer = window.setTimeout(() => {
-        settleTimer = 0;
+      cancelAnimationFrame(resizeRaf);
+      resizeRaf = requestAnimationFrame(() => {
+        resizeRaf = 0;
         const cw = Math.round(wrap.clientWidth);
-        const rw = renderedWidthRef.current;
-        if (rw > 0 && Math.abs(cw - rw) > 2) {
+        const rw = renderedAtWidth;
+        if (cw > 0 && rw > 0 && Math.abs(cw - rw) > 2) {
           layoutRev += 1;
         }
-      }, RESIZE_SETTLE_MS);
+      });
     });
     ro.observe(wrap);
-    frameClientWidth = Math.round(wrap.clientWidth);
     return () => {
       ro.disconnect();
-      clearTimeout(settleTimer);
+      cancelAnimationFrame(resizeRaf);
     };
   });
 </script>
@@ -231,22 +208,14 @@
         class="preview-frame"
         src={previewUrl}
         title="Live Typst preview"
+        allow="fullscreen"
       ></iframe>
       {#if error}
         <p class="err-overlay">{error}</p>
       {/if}
     {:else if pdfUrl}
-      <div
-        class="scale-viewport"
-        style:min-height="{scaledContentHeight > 0 ? `${scaledContentHeight}px` : undefined}"
-      >
-        <div
-          class="scale-inner"
-          style:width={renderedAtWidth > 0 ? `${renderedAtWidth}px` : "100%"}
-          style:transform="scale({displayScale})"
-        >
-          <div class="pages-stack" class:dim={!!loadError} bind:this={pagesRoot}></div>
-        </div>
+      <div class="scale-viewport">
+        <div class="pages-stack" class:dim={!!loadError} bind:this={pagesRoot}></div>
       </div>
       {#if loadError}
         <p class="err-overlay">{loadError}</p>
@@ -283,6 +252,8 @@
     flex: 1;
     min-height: 0;
     position: relative;
+    display: flex;
+    flex-direction: column;
     overflow: hidden;
     background: #525659;
   }
@@ -292,24 +263,19 @@
   }
 
   .preview-frame {
+    flex: 1;
+    min-height: 0;
     width: 100%;
-    height: 100%;
-    display: block;
     border: none;
     background: #525659;
   }
 
   .scale-viewport {
     display: flex;
-    justify-content: center;
+    flex-direction: column;
+    align-items: center;
     width: 100%;
     box-sizing: border-box;
-  }
-
-  .scale-inner {
-    transform-origin: top center;
-    flex-shrink: 0;
-    will-change: transform;
   }
 
   .pages-stack {
