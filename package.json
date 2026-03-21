@@ -23,8 +23,6 @@
     "@fontsource/ibm-plex-sans": "^5.2.8",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2.6.0",
-    "@tauri-apps/plugin-opener": "^2",
-    "codemirror": "^6.0.2",
     "pdfjs-dist": "^4.10.38"
   },
   "devDependencies": {

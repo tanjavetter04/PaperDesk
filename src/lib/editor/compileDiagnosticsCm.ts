@@ -1,6 +1,7 @@
 import type { Text } from "@codemirror/state";
 import type { Diagnostic } from "@codemirror/lint";
 import type { CompileDiagnostic } from "$lib/tauri/api";
+import { utf16OffsetByCodePointSteps } from "$lib/editor/utf16CodePoints";
 
 /** Backend may send absolute paths; open tab uses project-relative paths. */
 export function diagnosticTargetsOpenFile(
@@ -17,20 +18,6 @@ export function diagnosticTargetsOpenFile(
  * Typst reports 1-based line and column. Column is treated as a 1-based Unicode
  * code point index within the line (common for Rust tooling); mapped to UTF-16 for CodeMirror.
  */
-function utf16OffsetByCodePointSteps(lineText: string, codePoints: number): number {
-  if (codePoints <= 0) return 0;
-  let u16 = 0;
-  let taken = 0;
-  for (let i = 0; i < lineText.length && taken < codePoints; ) {
-    const cp = lineText.codePointAt(i)!;
-    const charLen = cp > 0xffff ? 2 : 1;
-    u16 += charLen;
-    i += charLen;
-    taken++;
-  }
-  return u16;
-}
-
 function diagnosticToRange(
   doc: Text,
   d: CompileDiagnostic,

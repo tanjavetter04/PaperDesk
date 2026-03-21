@@ -1,19 +1,5 @@
 import type { Text } from "@codemirror/state";
-
-/** Map 0-based Unicode code point column within line to UTF-16 offset (CodeMirror). */
-function utf16OffsetByCodePointSteps(lineText: string, codePoints: number): number {
-  if (codePoints <= 0) return 0;
-  let u16 = 0;
-  let taken = 0;
-  for (let i = 0; i < lineText.length && taken < codePoints; ) {
-    const cp = lineText.codePointAt(i)!;
-    const charLen = cp > 0xffff ? 2 : 1;
-    u16 += charLen;
-    i += charLen;
-    taken++;
-  }
-  return u16;
-}
+import { utf16OffsetByCodePointSteps } from "$lib/editor/utf16CodePoints";
 
 /**
  * Tinymist `editorScrollTo` uses 0-based line index and column (per typst source lines).

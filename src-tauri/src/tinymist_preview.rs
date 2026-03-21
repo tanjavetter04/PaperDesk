@@ -174,16 +174,22 @@ pub fn stop(state: &AppState) -> Result<(), String> {
     Ok(())
 }
 
+/// Drains tinymist stderr: notify the main thread as soon as the HTTP preview URL is known
+/// (do not wait for the control-plane WebSocket line — it may arrive later or be absent).
 fn spawn_stderr_reader(
     stderr: std::process::ChildStderr,
     tx: mpsc::Sender<Result<(String, Option<String>), String>>,
+    tx_late_control_ws: mpsc::Sender<String>,
 ) {
     thread::spawn(move || {
         let mut reader = BufReader::new(stderr);
         let mut line = String::new();
         let mut preview_url: Option<String> = None;
         let mut control_ws: Option<String> = None;
-        let mut sent = false;
+        let mut preview_reported = false;
+        // First `tx` had `control_ws: None`; if the control line appears later, forward on `tx_late`.
+        let mut waiting_for_late_control = false;
+        let mut late_control_sent = false;
 
         loop {
             line.clear();
@@ -197,20 +203,28 @@ fn spawn_stderr_reader(
                     if control_ws.is_none() {
                         control_ws = parse_control_plane_ws_url(t);
                     }
-                    if preview_url.is_some() && control_ws.is_some() {
-                        let _ = tx.send(Ok((
-                            preview_url.clone().unwrap(),
-                            control_ws.clone(),
-                        )));
-                        sent = true;
-                        break;
+                    if preview_url.is_some() && !preview_reported {
+                        let cw = control_ws.clone();
+                        waiting_for_late_control = cw.is_none();
+                        let _ = tx.send(Ok((preview_url.clone().unwrap(), cw)));
+                        preview_reported = true;
+                    }
+                    if waiting_for_late_control
+                        && !late_control_sent
+                        && control_ws.as_ref().is_some_and(|s| !s.is_empty())
+                    {
+                        if let Some(ws) = control_ws.clone() {
+                            let _ = tx_late_control_ws.send(ws);
+                            late_control_sent = true;
+                            waiting_for_late_control = false;
+                        }
                     }
                 }
                 Err(_) => break,
             }
         }
 
-        if !sent {
+        if !preview_reported {
             match preview_url {
                 Some(p) => {
                     let _ = tx.send(Ok((p, control_ws)));
@@ -303,7 +317,8 @@ pub fn ensure_running(app: &tauri::AppHandle, state: &AppState) -> Result<String
 
     let stderr = child.stderr.take().ok_or("tinymist: no stderr pipe")?;
     let (tx, rx) = mpsc::channel();
-    spawn_stderr_reader(stderr, tx);
+    let (tx_late_ws, rx_late_ws) = mpsc::channel::<String>();
+    spawn_stderr_reader(stderr, tx, tx_late_ws);
 
     let (preview_url, control_ws) = match rx.recv_timeout(Duration::from_secs(45)) {
         Ok(Ok(pair)) => pair,
@@ -320,9 +335,17 @@ pub fn ensure_running(app: &tauri::AppHandle, state: &AppState) -> Result<String
     };
 
     let app_handle = app.clone();
-    let control_plane_listener = control_ws
+    let mut control_plane_listener = control_ws
         .filter(|s| !s.is_empty())
-        .map(|ws| spawn_control_plane_listener(app_handle, ws));
+        .map(|ws| spawn_control_plane_listener(app_handle.clone(), ws));
+
+    if control_plane_listener.is_none() {
+        if let Ok(ws) = rx_late_ws.recv_timeout(Duration::from_secs(10)) {
+            if !ws.is_empty() {
+                control_plane_listener = Some(spawn_control_plane_listener(app_handle, ws));
+            }
+        }
+    }
 
     *state.tinymist.lock().map_err(|e| e.to_string())? = Some(TinymistSession {
         child,

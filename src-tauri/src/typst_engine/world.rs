@@ -1,13 +1,12 @@
 //! Typst `World` backed by the project directory (adapted from typst-cli's `world.rs`, Apache-2.0).
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 use std::{fmt, fs, io, mem};
 
 use chrono::{Datelike, FixedOffset, Local, Utc};
 use ecow::{EcoString, eco_format};
-use parking_lot::Mutex;
-use rustc_hash::FxHashMap;
 use typst::diag::{FileError, FileResult};
 use typst::foundations::{Bytes, Datetime, Dict};
 use typst::syntax::{FileId, Source, VirtualPath};
@@ -27,11 +26,11 @@ pub struct PaperDeskWorld {
     root: PathBuf,
     main: FileId,
     /// Unsaved editor buffers: compiled as if written to disk (live preview).
-    source_overrides: FxHashMap<FileId, EcoString>,
+    source_overrides: HashMap<FileId, EcoString>,
     library: LazyHash<Library>,
     book: LazyHash<FontBook>,
     fonts: Vec<FontSlot>,
-    slots: Mutex<FxHashMap<FileId, FileSlot>>,
+    slots: Mutex<HashMap<FileId, FileSlot>>,
     package_storage: PackageStorage,
     now: Now,
 }
@@ -72,7 +71,7 @@ impl PaperDeskWorld {
 
         let main = resolve_source_file_id(&root, main_relative)?;
 
-        let mut overrides: FxHashMap<FileId, EcoString> = FxHashMap::default();
+        let mut overrides: HashMap<FileId, EcoString> = HashMap::new();
         for (rel, text) in source_overrides {
             let rel = rel.replace('\\', "/");
             let id = resolve_source_file_id(&root, rel.trim())?;
@@ -107,7 +106,7 @@ impl PaperDeskWorld {
             library: LazyHash::new(library),
             book: LazyHash::new(fonts.book),
             fonts: fonts.fonts,
-            slots: Mutex::new(FxHashMap::default()),
+            slots: Mutex::new(HashMap::new()),
             package_storage,
             now: Now::System(OnceLock::new()),
         })
@@ -129,8 +128,12 @@ impl PaperDeskWorld {
     }
 
     pub fn reset(&mut self) {
-        #[allow(clippy::iter_over_hash_type, reason = "order does not matter")]
-        for slot in self.slots.get_mut().values_mut() {
+        for slot in self
+            .slots
+            .get_mut()
+            .expect("typst world slots mutex poisoned")
+            .values_mut()
+        {
             slot.reset();
         }
         let Now::System(time_lock) = &mut self.now;
@@ -141,7 +144,10 @@ impl PaperDeskWorld {
     where
         F: FnOnce(&mut FileSlot) -> T,
     {
-        let mut map = self.slots.lock();
+        let mut map = self
+            .slots
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         f(map.entry(id).or_insert_with(|| FileSlot::new(id)))
     }
 }
@@ -214,7 +220,7 @@ impl FileSlot {
         &mut self,
         project_root: &Path,
         package_storage: &PackageStorage,
-        overrides: &FxHashMap<FileId, EcoString>,
+        overrides: &HashMap<FileId, EcoString>,
     ) -> FileResult<Source> {
         self.source.get_or_init(
             || load_bytes(self.id, project_root, package_storage, overrides),
@@ -234,7 +240,7 @@ impl FileSlot {
         &mut self,
         project_root: &Path,
         package_storage: &PackageStorage,
-        overrides: &FxHashMap<FileId, EcoString>,
+        overrides: &HashMap<FileId, EcoString>,
     ) -> FileResult<Bytes> {
         self.file.get_or_init(
             || load_bytes(self.id, project_root, package_storage, overrides),
@@ -305,7 +311,7 @@ fn load_bytes(
     id: FileId,
     project_root: &Path,
     package_storage: &PackageStorage,
-    overrides: &FxHashMap<FileId, EcoString>,
+    overrides: &HashMap<FileId, EcoString>,
 ) -> FileResult<Vec<u8>> {
     if let Some(t) = overrides.get(&id) {
         return Ok(t.as_bytes().to_vec());
