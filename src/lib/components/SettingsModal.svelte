@@ -95,6 +95,7 @@
   let aiBaseUrl = $state("");
   let aiModel = $state("");
   let aiSaveFlash = $state<"ok" | "err" | null>(null);
+  let aiKeyRemoveBusy = $state(false);
 
   $effect(() => {
     if (open) bibDraft = appSettings.zoteroBibRelativePath;
@@ -147,9 +148,26 @@
     }
   }
 
-  function markRemoveAiKey() {
-    aiApiKeyTouched = true;
-    aiApiKeyDraft = "";
+  async function removeStoredAiKey() {
+    if (aiKeyRemoveBusy) return;
+    aiSaveFlash = null;
+    aiKeyRemoveBusy = true;
+    try {
+      await aiSetConfig({
+        enabled: aiEnabled,
+        baseUrl: aiBaseUrl.trim(),
+        model: aiModel.trim(),
+        apiKey: "",
+      });
+      aiStatus = await aiGetStatus();
+      aiApiKeyDraft = "";
+      aiApiKeyTouched = false;
+      aiSaveFlash = "ok";
+    } catch {
+      aiSaveFlash = "err";
+    } finally {
+      aiKeyRemoveBusy = false;
+    }
   }
 </script>
 
@@ -387,7 +405,13 @@
           }}
         />
         {#if aiStatus?.hasApiKey}
-          <button type="button" class="ghost small-ghost" onclick={markRemoveAiKey}>
+          <button
+            type="button"
+            class="ai-remove-key"
+            disabled={aiKeyRemoveBusy}
+            aria-busy={aiKeyRemoveBusy}
+            onclick={() => void removeStoredAiKey()}
+          >
             {t("settings.aiRemoveKey")}
           </button>
         {/if}
@@ -685,11 +709,37 @@
     height: 1rem;
   }
 
-  .small-ghost {
-    margin-top: 0.35rem;
-    padding: 0.2rem 0;
-    font-size: 0.88rem;
+  .ai-remove-key {
+    box-sizing: border-box;
+    width: fit-content;
+    max-width: 100%;
     align-self: flex-start;
+    margin-top: 0.5rem;
+    padding: 0.55rem 0.75rem;
+    border-radius: 6px;
+    border: 1px solid color-mix(in srgb, #f87171 55%, var(--pd-border));
+    background: color-mix(in srgb, #f87171 16%, var(--pd-bg));
+    color: color-mix(in srgb, #f87171 88%, var(--pd-text));
+    font-size: 0.95rem;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    text-align: left;
+  }
+
+  .ai-remove-key:hover:not(:disabled) {
+    background: color-mix(in srgb, #f87171 24%, var(--pd-bg));
+    border-color: color-mix(in srgb, #f87171 72%, var(--pd-border));
+  }
+
+  .ai-remove-key:focus-visible {
+    outline: 2px solid color-mix(in srgb, #f87171 55%, transparent);
+    outline-offset: 2px;
+  }
+
+  .ai-remove-key:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
   }
 
   .ai-flash {

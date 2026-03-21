@@ -109,13 +109,13 @@
 </script>
 
 {#if open}
-  <div
-    class="backdrop"
-    role="presentation"
-    onclick={(e) => e.target === e.currentTarget && onClose()}
-  ></div>
   {#key locale.value}
-    <div class="panel" role="dialog" aria-modal="true" aria-labelledby="ai-title">
+    <div
+      class="panel"
+      role="dialog"
+      aria-modal="false"
+      aria-labelledby="ai-title"
+    >
       <div class="head">
         <h2 id="ai-title">{t("ai.title")}</h2>
         <div class="head-actions">
@@ -166,18 +166,13 @@
 {/if}
 
 <style>
-  .backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgb(0 0 0 / 0.45);
-    z-index: 116;
-  }
-
+  /* Floating pane: no fullscreen backdrop so the editor stays usable (select, scroll). */
   .panel {
     position: fixed;
-    left: 1rem;
+    right: 1rem;
     top: 4rem;
     bottom: 1rem;
+    left: auto;
     width: min(440px, calc(100vw - 2rem));
     z-index: 118;
     display: flex;
@@ -186,7 +181,9 @@
     border: 1px solid var(--pd-border);
     background: var(--pd-surface);
     color: var(--pd-text);
-    box-shadow: 0 12px 40px rgb(0 0 0 / 0.35);
+    box-shadow:
+      0 0 0 1px rgb(0 0 0 / 0.06),
+      0 16px 48px rgb(0 0 0 / 0.28);
     min-height: 0;
   }
 
