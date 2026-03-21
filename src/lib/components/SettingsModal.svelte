@@ -275,7 +275,26 @@
   }
 </script>
 
-<svelte:window onpointerdown={onDocPointerDown} />
+<svelte:window
+  onpointerdown={onDocPointerDown}
+  onkeydown={(e) => {
+    if (!open || e.key !== "Escape") return;
+    if (
+      localeMenuOpen ||
+      themeMenuOpen ||
+      spellMenuOpen ||
+      aiModelPresetMenuOpen
+    ) {
+      localeMenuOpen = false;
+      themeMenuOpen = false;
+      spellMenuOpen = false;
+      aiModelPresetMenuOpen = false;
+      e.preventDefault();
+      return;
+    }
+    onClose();
+  }}
+/>
 
 {#if open}
   <div
@@ -289,7 +308,10 @@
     aria-modal="true"
     aria-labelledby="settings-title"
   >
-    <h2 id="settings-title">{t("settings.title")}</h2>
+    <header class="modal-header">
+      <h2 id="settings-title">{t("settings.title")}</h2>
+    </header>
+    <div class="modal-body">
     <label class="field">
       {t("settings.language")}
       <div class="custom-select" bind:this={langRoot}>
@@ -614,7 +636,8 @@
         <p class="ai-flash err">{t("settings.aiSaveError")}</p>
       {/if}
     </div>
-    <div class="btns">
+    </div>
+    <div class="modal-footer">
       <button type="button" class="primary" onclick={onClose}>
         {t("settings.close")}
       </button>
@@ -636,10 +659,14 @@
     top: 50%;
     transform: translate(-50%, -50%);
     z-index: 210;
-    min-width: min(380px, calc(100vw - 2rem));
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    /* Fixed width: shrink-to-fit on `position:fixed` + `width:auto` followed UI language string lengths. */
+    width: min(800px, calc(100vw - 2rem));
     max-height: min(90vh, 640px);
-    overflow: auto;
-    padding: 1rem 1.1rem;
+    overflow: hidden;
+    padding: 0;
     border-radius: 8px;
     border: 1px solid var(--pd-border);
     background: var(--pd-surface);
@@ -647,10 +674,33 @@
     box-shadow: 0 12px 40px rgb(0 0 0 / 0.35);
   }
 
-  .modal h2 {
-    margin: 0 0 0.75rem;
+  .modal-header {
+    flex-shrink: 0;
+    padding: 1rem 1.1rem 0.75rem;
+    border-bottom: 1px solid var(--pd-border);
+  }
+
+  .modal-header h2 {
+    margin: 0;
     font-size: 1rem;
     font-weight: 600;
+    line-height: 1.3;
+  }
+
+  .modal-body {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 0.75rem 1.1rem 0.25rem;
+  }
+
+  .modal-footer {
+    flex-shrink: 0;
+    display: flex;
+    justify-content: flex-end;
+    padding: 0.75rem 1.1rem 1rem;
+    border-top: 1px solid var(--pd-border);
+    background: var(--pd-surface);
   }
 
   .field {
@@ -867,11 +917,6 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     text-align: left;
-  }
-
-  .btns {
-    display: flex;
-    justify-content: flex-end;
   }
 
   .primary,
