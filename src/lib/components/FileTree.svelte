@@ -154,15 +154,52 @@
   {/if}
 {/snippet}
 
+{#snippet folderGlyph()}
+  <!-- Gefüllt: Tab + breiter Block — eindeutig „Ordner“, nicht Blatt -->
+  <svg
+    class="tree-svg tree-svg--folder"
+    viewBox="0 0 24 24"
+    width="18"
+    height="15"
+    aria-hidden="true"
+  >
+    <g fill="currentColor">
+      <rect x="2" y="9" width="20" height="13" rx="2.25" ry="2.25" />
+      <rect x="2" y="4" width="11" height="7" rx="1.75" ry="1.75" />
+    </g>
+  </svg>
+{/snippet}
+
+{#snippet fileGlyph()}
+  <!-- Schmale Seite, umgeklappter Rand + horizontale Zeilen = Textdatei -->
+  <svg
+    class="tree-svg tree-svg--file"
+    viewBox="0 0 24 24"
+    width="13"
+    height="13"
+    aria-hidden="true"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="2"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  >
+    <path d="M14.5 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7.5L14.5 2Z" />
+    <path d="M14 2v6h6" />
+    <path d="M8 10h6M8 14h8M8 18h5" />
+  </svg>
+{/snippet}
+
 {#snippet fileRow(node: FileTreeNode, depth: number)}
   <button
     type="button"
     class="row file"
     class:sel={node.path === selectedFilePath}
-    style:padding-left={`${0.65 + depth * 0.65}rem`}
+    style:padding-left={`${0.5 + depth * 0.75}rem`}
     onclick={() => rowClick(node)}
   >
     <span class="caret spacer"></span>
+    <span class="row-icon">{@render fileGlyph()}</span>
     <span class="label">{node.name}</span>
   </button>
 {/snippet}
@@ -171,12 +208,14 @@
   <button
     type="button"
     class="row dir"
+    class:expanded={dirExpanded(node.path)}
     class:sel={node.path === targetDirPath}
-    style:padding-left={`${0.65 + depth * 0.65}rem`}
+    style:padding-left={`${0.5 + depth * 0.75}rem`}
     onclick={() => rowClick(node)}
   >
     {@render caret(node)}
-    <span class="label">{node.name}/</span>
+    <span class="row-icon">{@render folderGlyph()}</span>
+    <span class="label folder-name">{node.name}</span>
   </button>
   {#if dirExpanded(node.path) && node.children.length}
     <ul class="nested">
@@ -324,7 +363,9 @@
   }
 
   .nested {
-    padding: 0 0 0.15rem 0;
+    margin: 0.05rem 0 0.1rem 0.2rem;
+    padding: 0.08rem 0 0.12rem 0.55rem;
+    border-left: 1px solid color-mix(in srgb, var(--pd-accent) 18%, var(--pd-border));
   }
 
   .tree-root {
@@ -336,11 +377,12 @@
   .row {
     display: flex;
     align-items: center;
-    gap: 0.2rem;
+    gap: 0.15rem;
     width: 100%;
     text-align: left;
-    padding: 0.32rem 0.75rem 0.32rem 0.65rem;
+    padding: 0.3rem 0.65rem 0.3rem 0.5rem;
     border: none;
+    border-radius: 5px;
     background: transparent;
     color: var(--pd-text);
     font-size: 0.82rem;
@@ -357,8 +399,55 @@
     color: var(--pd-text);
   }
 
-  .row.dir .label {
-    color: color-mix(in srgb, var(--pd-text) 88%, var(--pd-muted));
+  .row.dir:hover {
+    background: color-mix(in srgb, var(--pd-accent) 7%, var(--pd-surface));
+  }
+
+  .row.dir.sel {
+    background: color-mix(in srgb, var(--pd-accent) 16%, var(--pd-surface));
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--pd-accent) 28%, transparent);
+  }
+
+  .row-icon {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.15rem;
+  }
+
+  .tree-svg--folder {
+    color: color-mix(in srgb, var(--pd-accent) 38%, var(--pd-muted));
+    opacity: 0.95;
+  }
+
+  .row.dir.expanded .tree-svg--folder {
+    color: color-mix(in srgb, var(--pd-accent) 58%, var(--pd-muted));
+  }
+
+  .row.dir.sel .tree-svg--folder {
+    color: color-mix(in srgb, var(--pd-accent) 72%, var(--pd-text));
+  }
+
+  .tree-svg--file {
+    color: var(--pd-muted);
+    opacity: 0.88;
+  }
+
+  .row.file.sel .tree-svg--file {
+    color: color-mix(in srgb, var(--pd-text) 70%, var(--pd-accent));
+    opacity: 1;
+  }
+
+  .folder-name {
+    font-weight: 600;
+    font-family: var(--pd-font), system-ui, sans-serif;
+    font-size: 0.8rem;
+    letter-spacing: 0.02em;
+  }
+
+  .row.file .label {
+    font-weight: 400;
   }
 
   .caret {
