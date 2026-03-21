@@ -138,8 +138,9 @@ pub fn ensure_running(state: &AppState, entry: Option<String>) -> Result<String,
         .arg("preview")
         .arg(input_s)
         .arg("--no-open")
+        // Incremental patches can flicker and throw off in-preview scroll; full passes are steadier.
         .arg("--partial-rendering")
-        .arg("true")
+        .arg("false")
         .arg("--data-plane-host")
         .arg("127.0.0.1:0")
         .arg("--control-plane-host")

@@ -80,11 +80,14 @@
 
   let splitDragStartX = 0;
   let splitDragStartW = 0;
+  /** While dragging, avoid pointer hit-testing inside the tinymist iframe (reduces jank / odd scroll jumps). */
+  let splitDragging = $state(false);
 
   function onSplitPointerDown(e: PointerEvent) {
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     splitDragStartX = e.clientX;
     splitDragStartW = previewWidthPx;
+    splitDragging = true;
     e.preventDefault();
   }
 
@@ -99,6 +102,7 @@
     if (el.hasPointerCapture(e.pointerId)) {
       el.releasePointerCapture(e.pointerId);
     }
+    splitDragging = false;
     if (typeof localStorage !== "undefined") {
       localStorage.setItem(PREVIEW_WIDTH_STORAGE, String(previewWidthPx));
     }
@@ -158,12 +162,18 @@
   });
 
   async function ensurePreview(restart = false) {
-    previewLabel = "starting";
     previewError = null;
+    const hadUrl = previewUrl !== null;
+    if (restart || !hadUrl) {
+      previewLabel = "starting";
+    }
     try {
-      previewUrl = restart
+      const url = restart
         ? await restartTinymistPreview(null)
         : await startTinymistPreview(null);
+      if (previewUrl !== url) {
+        previewUrl = url;
+      }
       previewLabel = "live";
     } catch (e) {
       previewUrl = null;
@@ -315,7 +325,7 @@
       onpointerup={onSplitPointerUp}
       onpointercancel={onSplitPointerUp}
     ></div>
-    <aside class="preview-col">
+    <aside class="preview-col" class:preview-col--split-drag={splitDragging}>
       <PreviewPane {previewUrl} error={previewError} />
     </aside>
   </div>
@@ -454,5 +464,9 @@
     height: 100%;
     display: flex;
     flex-direction: column;
+  }
+
+  .preview-col.preview-col--split-drag :global(.preview-frame) {
+    pointer-events: none;
   }
 </style>
