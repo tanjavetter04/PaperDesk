@@ -76,6 +76,8 @@
   let historyPanelOpen = $state(false);
   let historyCommits = $state<HistoryCommitSummary[]>([]);
   let historyBusy = $state(false);
+  /** True while reloading commits but we already had a list (keep list visible). */
+  let historyRefreshing = $state(false);
   let historyDiffText = $state("");
   let historyDiffOpen = $state(false);
   let historyRestoreCommitId = $state<string | null>(null);
@@ -524,14 +526,16 @@
 
   async function refreshHistoryCommits() {
     if (!historyActive) return;
+    const keepListVisible = historyCommits.length > 0;
     historyBusy = true;
+    historyRefreshing = keepListVisible;
     try {
       historyCommits = await historyListCommits(80);
     } catch (e) {
       showMessage(formatUserError(e));
-      historyCommits = [];
     } finally {
       historyBusy = false;
+      historyRefreshing = false;
     }
   }
 
@@ -784,6 +788,7 @@
   /** Write without updating UI; used when switching files so the tab change is not blocked. */
   async function flushPathToDisk(path: string, text: string): Promise<void> {
     await writeTextFile(path, text);
+    bumpHistoryIdleTimer();
   }
 
   function scheduleSave() {
@@ -1192,6 +1197,9 @@
     open={historyPanelOpen}
     commits={historyCommits}
     busy={historyBusy}
+    refreshing={historyRefreshing}
+    tipShort={historyStatus?.tipShort ?? null}
+    historyRefExists={historyStatus?.historyRefExists ?? false}
     diffText={historyDiffText}
     diffOpen={historyDiffOpen}
     onClose={() => {

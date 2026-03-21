@@ -277,28 +277,28 @@ pub struct HistoryCommitSummary {
     pub time_unix: i64,
 }
 
+/// Lists checkpoints from newest to oldest along the first-parent chain of
+/// `refs/paperdesk/history` (deterministic order; avoids time-sorted revwalk quirks).
 pub fn list_commits(repo: &Repository, limit: usize) -> Result<Vec<HistoryCommitSummary>, String> {
     let Ok(history_ref) = repo.find_reference(HISTORY_REF) else {
         return Ok(Vec::new());
     };
-    let Some(oid) = history_ref.target() else {
+    let Some(mut oid) = history_ref.target() else {
         return Ok(Vec::new());
     };
 
-    let mut rw = repo.revwalk().map_err(|e| e.to_string())?;
-    rw.set_sorting(git2::Sort::TIME).map_err(|e| e.to_string())?;
-    rw.push(oid).map_err(|e| e.to_string())?;
-
     let mut out = Vec::new();
-    for id in rw.take(limit) {
-        let id = id.map_err(|e| e.to_string())?;
-        let commit = repo.find_commit(id).map_err(|e| e.to_string())?;
+    for _ in 0..limit {
+        let commit = match repo.find_commit(oid) {
+            Ok(c) => c,
+            Err(_) => break,
+        };
         let msg = commit
             .message()
             .map(|m| m.trim().to_string())
             .unwrap_or_default();
         let time = commit.time().seconds();
-        let full = id.to_string();
+        let full = oid.to_string();
         let short = full.chars().take(8).collect::<String>();
         out.push(HistoryCommitSummary {
             id: full,
@@ -306,6 +306,13 @@ pub fn list_commits(repo: &Repository, limit: usize) -> Result<Vec<HistoryCommit
             message: msg,
             time_unix: time,
         });
+        if commit.parent_count() == 0 {
+            break;
+        }
+        oid = match commit.parent(0) {
+            Ok(parent) => parent.id(),
+            Err(_) => break,
+        };
     }
     Ok(out)
 }
@@ -321,12 +328,20 @@ pub fn diff_commit_to_workdir(repo: &Repository, commit_id: &str) -> Result<Stri
 
     const MAX_OUT: usize = 512 * 1024;
     let mut out = String::new();
+    // Only prefix context/add/delete lines with their marker. libgit2 uses other origins
+    // (e.g. 'F' file header, 'H' hunk header) where `content` already contains the full line;
+    // prepending those chars would corrupt the patch ("Fdiff --git …").
     diff.print(git2::DiffFormat::Patch, |_delta, _hunk, line| {
         if out.len() < MAX_OUT {
             let origin = line.origin();
             let content = String::from_utf8_lossy(line.content());
-            out.push(origin);
-            out.push_str(&content);
+            match origin {
+                ' ' | '+' | '-' => {
+                    out.push(origin);
+                    out.push_str(&content);
+                }
+                _ => out.push_str(&content),
+            }
         }
         true
     })
@@ -378,17 +393,40 @@ pub fn try_checkpoint(
         return Ok(None);
     }
 
-    let should_commit = if force {
-        true
+    let had_dirty = if force {
+        false
     } else {
         take_dirty(state)
     };
+    let should_commit = force || had_dirty;
     if !should_commit {
         return Ok(None);
     }
 
     let _lock = state.history_git_lock.lock().map_err(|e| e.to_string())?;
-    let repo = open_repo(root)?;
-    let id = create_checkpoint(&repo, message)?;
+    let repo = match open_repo(root) {
+        Ok(r) => r,
+        Err(e) => {
+            if had_dirty {
+                note_dirty(state);
+            }
+            return Err(e);
+        }
+    };
+    let msg = message.trim();
+    let full_message = if msg.to_ascii_lowercase().starts_with("paperdesk:") {
+        msg.to_string()
+    } else {
+        format!("paperdesk: {msg}")
+    };
+    let id = match create_checkpoint(&repo, &full_message) {
+        Ok(id) => id,
+        Err(e) => {
+            if had_dirty {
+                note_dirty(state);
+            }
+            return Err(e);
+        }
+    };
     Ok(id.map(|oid| oid.to_string()))
 }

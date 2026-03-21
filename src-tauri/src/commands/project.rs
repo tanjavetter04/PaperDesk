@@ -211,7 +211,7 @@ pub fn close_project(state: tauri::State<'_, AppState>) -> Result<(), String> {
         .map_err(|e| e.to_string())?
         .clone();
     if let Some(ref r) = root {
-        let _ = crate::project::history::try_checkpoint(&state, r, "paperdesk: close", false);
+        let _ = crate::project::history::try_checkpoint(&state, r, "close", false);
     }
     bib_watch::stop(&state);
     tinymist_preview::stop(&state)?;

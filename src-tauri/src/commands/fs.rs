@@ -104,7 +104,7 @@ pub fn create_project_dir(
     }
     fs::create_dir_all(&path).map_err(|e| e.to_string())?;
     drop(guard);
-    let _ = history::try_checkpoint(&state, &root, "paperdesk: new folder", true);
+    let _ = history::try_checkpoint(&state, &root, "new folder", true);
     Ok(())
 }
 
@@ -140,7 +140,7 @@ pub fn move_project_path(
     }
     fs::rename(&from_path, &to_path).map_err(|e| e.to_string())?;
     drop(guard);
-    let _ = history::try_checkpoint(&state, &root, "paperdesk: move/rename", true);
+    let _ = history::try_checkpoint(&state, &root, "move/rename", true);
     Ok(())
 }
 
