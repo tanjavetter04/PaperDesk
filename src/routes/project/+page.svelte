@@ -67,27 +67,42 @@
   const DIAGNOSTICS_DEBOUNCE_MS = 420;
 
   const PREVIEW_WIDTH_STORAGE = "paperdesk.previewWidthPx";
-  const SIDEBAR_W = 220;
+  const SIDEBAR_WIDTH_STORAGE = "paperdesk.sidebarWidthPx";
   const SPLITTER_W = 6;
   const MIN_PREVIEW_W = 200;
   const MIN_EDITOR_W = 200;
+  const MIN_SIDEBAR_W = 160;
+  const DEFAULT_SIDEBAR_W = 220;
 
   let mainEl = $state<HTMLDivElement | null>(null);
+  let sidebarWidthPx = $state(DEFAULT_SIDEBAR_W);
   let previewWidthPx = $state(360);
   /** Bumped on window resize so aria / max width stay in sync with the grid. */
   let layoutMeasure = $state(0);
 
-  let mainGridColumns = $derived(
-    `${SIDEBAR_W}px minmax(0, 1fr) ${SPLITTER_W}px ${previewWidthPx}px`,
-  );
-
   const previewWidthMaxPx = $derived.by(() => {
     void layoutMeasure;
+    void sidebarWidthPx;
     if (!mainEl) return 800;
     const total = mainEl.getBoundingClientRect().width;
     return Math.max(
       MIN_PREVIEW_W,
-      Math.floor(total - SIDEBAR_W - SPLITTER_W - MIN_EDITOR_W),
+      Math.floor(
+        total - sidebarWidthPx - 2 * SPLITTER_W - MIN_EDITOR_W,
+      ),
+    );
+  });
+
+  const sidebarWidthMaxPx = $derived.by(() => {
+    void layoutMeasure;
+    void previewWidthPx;
+    if (!mainEl) return 480;
+    const total = mainEl.getBoundingClientRect().width;
+    return Math.max(
+      MIN_SIDEBAR_W,
+      Math.floor(
+        total - MIN_PREVIEW_W - 2 * SPLITTER_W - MIN_EDITOR_W,
+      ),
     );
   });
 
@@ -102,13 +117,27 @@
     const max = mainEl
       ? Math.floor(
           mainEl.getBoundingClientRect().width -
-            SIDEBAR_W -
-            SPLITTER_W -
+            sidebarWidthPx -
+            2 * SPLITTER_W -
             MIN_EDITOR_W,
         )
       : 560;
     return Math.round(
       Math.max(MIN_PREVIEW_W, Math.min(Math.max(MIN_PREVIEW_W, max), next)),
+    );
+  }
+
+  function clampSidebarWidth(next: number): number {
+    const max = mainEl
+      ? Math.floor(
+          mainEl.getBoundingClientRect().width -
+            previewWidthPx -
+            2 * SPLITTER_W -
+            MIN_EDITOR_W,
+        )
+      : 480;
+    return Math.round(
+      Math.max(MIN_SIDEBAR_W, Math.min(Math.max(MIN_SIDEBAR_W, max), next)),
     );
   }
 
@@ -139,6 +168,35 @@
     splitDragging = false;
     if (typeof localStorage !== "undefined") {
       localStorage.setItem(PREVIEW_WIDTH_STORAGE, String(previewWidthPx));
+    }
+  }
+
+  let sidebarSplitDragStartX = 0;
+  let sidebarSplitDragStartW = 0;
+  let sidebarSplitDragging = $state(false);
+
+  function onSidebarSplitPointerDown(e: PointerEvent) {
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    sidebarSplitDragStartX = e.clientX;
+    sidebarSplitDragStartW = sidebarWidthPx;
+    sidebarSplitDragging = true;
+    e.preventDefault();
+  }
+
+  function onSidebarSplitPointerMove(e: PointerEvent) {
+    if (!(e.currentTarget as HTMLElement).hasPointerCapture(e.pointerId)) return;
+    const dx = e.clientX - sidebarSplitDragStartX;
+    sidebarWidthPx = clampSidebarWidth(sidebarSplitDragStartW + dx);
+  }
+
+  function onSidebarSplitPointerUp(e: PointerEvent) {
+    const el = e.currentTarget as HTMLElement;
+    if (el.hasPointerCapture(e.pointerId)) {
+      el.releasePointerCapture(e.pointerId);
+    }
+    sidebarSplitDragging = false;
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem(SIDEBAR_WIDTH_STORAGE, String(sidebarWidthPx));
     }
   }
 
@@ -182,6 +240,13 @@
     });
 
     if (typeof localStorage !== "undefined") {
+      const rawSb = localStorage.getItem(SIDEBAR_WIDTH_STORAGE);
+      if (rawSb) {
+        const n = Number(rawSb);
+        if (Number.isFinite(n) && n >= MIN_SIDEBAR_W && n <= 2000) {
+          sidebarWidthPx = n;
+        }
+      }
       const raw = localStorage.getItem(PREVIEW_WIDTH_STORAGE);
       if (raw) {
         const n = Number(raw);
@@ -195,9 +260,13 @@
     const onResize = () => {
       layoutMeasure += 1;
       previewWidthPx = clampPreviewWidth(previewWidthPx);
+      sidebarWidthPx = clampSidebarWidth(sidebarWidthPx);
+      previewWidthPx = clampPreviewWidth(previewWidthPx);
     };
     window.addEventListener("resize", onResize);
     void tick().then(() => {
+      previewWidthPx = clampPreviewWidth(previewWidthPx);
+      sidebarWidthPx = clampSidebarWidth(sidebarWidthPx);
       previewWidthPx = clampPreviewWidth(previewWidthPx);
     });
 
@@ -620,12 +689,12 @@
     <button type="button" class="action" onclick={doExport}>Export PDF</button>
   </header>
 
-  <div
-    class="main"
-    bind:this={mainEl}
-    style:grid-template-columns={mainGridColumns}
-  >
-    <aside class="side">
+  <div class="main" bind:this={mainEl}>
+    <aside
+      class="side"
+      class:side--split-drag={sidebarSplitDragging}
+      style:width={`${sidebarWidthPx}px`}
+    >
       <FileTree
         entries={projectEntries}
         selectedFilePath={selectedPath}
@@ -639,6 +708,19 @@
         onMoveFile={handleMoveFile}
       />
     </aside>
+    <div
+      class="splitter"
+      role="separator"
+      aria-orientation="vertical"
+      aria-valuenow={sidebarWidthPx}
+      aria-valuemin={MIN_SIDEBAR_W}
+      aria-valuemax={sidebarWidthMaxPx}
+      aria-label="Breite der Dateiansicht anpassen"
+      onpointerdown={onSidebarSplitPointerDown}
+      onpointermove={onSidebarSplitPointerMove}
+      onpointerup={onSidebarSplitPointerUp}
+      onpointercancel={onSidebarSplitPointerUp}
+    ></div>
     <section class="center">
       <EditorPane
         path={selectedPath}
@@ -664,7 +746,11 @@
       onpointerup={onSplitPointerUp}
       onpointercancel={onSplitPointerUp}
     ></div>
-    <aside class="preview-col" class:preview-col--split-drag={splitDragging}>
+    <aside
+      class="preview-col"
+      class:preview-col--split-drag={splitDragging}
+      style:width={`${previewWidthPx}px`}
+    >
       <PreviewPane {previewUrl} error={previewError} />
     </aside>
   </div>
@@ -787,15 +873,16 @@
 
   .main {
     flex: 1;
-    display: grid;
-    grid-template-rows: minmax(0, 1fr);
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
     min-height: 0;
+    min-width: 0;
   }
 
   .splitter {
-    grid-column: 3;
-    grid-row: 1;
-    width: 100%;
+    flex: 0 0 6px;
+    width: 6px;
     min-height: 0;
     touch-action: none;
     user-select: none;
@@ -809,12 +896,20 @@
   }
 
   .side {
+    flex: 0 0 auto;
     min-height: 0;
+    min-width: 0;
+    overflow: hidden;
     display: flex;
     flex-direction: column;
   }
 
+  .side.side--split-drag :global(*) {
+    pointer-events: none;
+  }
+
   .center {
+    flex: 1 1 0;
     display: flex;
     flex-direction: column;
     min-width: 0;
@@ -822,9 +917,9 @@
   }
 
   .preview-col {
+    flex: 0 0 auto;
     min-width: 0;
     min-height: 0;
-    height: 100%;
     display: flex;
     flex-direction: column;
   }
