@@ -27,6 +27,8 @@ export const messageKeys = [
   "editor.spellUnknown",
   "editor.spellSuggestions",
   "editor.spellChecking",
+  "editor.spellErrorsOne",
+  "editor.spellErrorsOther",
   "project.bibExternalChange",
   "project.bibReloadFromDisk",
   "hub.openProjectFolder",
@@ -141,6 +143,8 @@ const de: Table = {
   "editor.spellUnknown": "Unbekanntes Wort",
   "editor.spellSuggestions": "Vorschläge",
   "editor.spellChecking": "Rechtschreibung wird geprüft …",
+  "editor.spellErrorsOne": "1 Rechtschreibfehler",
+  "editor.spellErrorsOther": "{n} Rechtschreibfehler",
   "project.bibExternalChange":
     "Die Bibliographie-Datei wurde außerhalb von PaperDesk geändert (z. B. durch Zotero). Deine ungespeicherten Änderungen in diesem Tab gehen verloren, wenn du neu lädst.",
   "project.bibReloadFromDisk": "Neu laden",
@@ -259,6 +263,8 @@ const en: Table = {
   "editor.spellUnknown": "Unknown word",
   "editor.spellSuggestions": "Suggestions",
   "editor.spellChecking": "Checking spelling…",
+  "editor.spellErrorsOne": "1 spelling error",
+  "editor.spellErrorsOther": "{n} spelling errors",
   "project.bibExternalChange":
     "The bibliography file was changed outside PaperDesk (e.g. by Zotero). Reloading will discard your unsaved edits in this tab.",
   "project.bibReloadFromDisk": "Reload from disk",

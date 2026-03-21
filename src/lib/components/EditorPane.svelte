@@ -96,6 +96,36 @@
     spellLang: "de" | "en";
   } | null = null;
 
+  type SpellHeadState = { kind: "hidden" } | { kind: "checking" } | { kind: "done"; count: number };
+
+  /** Header line: only show a result count when it matches the live document and cache metadata. */
+  const spellHeadState = $derived.by((): SpellHeadState => {
+    void docRevision;
+    const p = path;
+    const sl = appSettings.spellcheckLanguage;
+    if (!p?.endsWith(".typ") || sl === "off") return { kind: "hidden" };
+    const v = view;
+    if (!v) return { kind: "hidden" };
+    if (spellWorkerInflight > 0) return { kind: "checking" };
+    const c = spellEditCache;
+    if (
+      !c ||
+      c.path !== p ||
+      c.spellLang !== sl ||
+      c.uiLocale !== locale.value ||
+      c.reloadTick !== reloadTick ||
+      c.reloadFromDiskTick !== reloadFromDiskTick
+    ) {
+      return { kind: "hidden" };
+    }
+    if (c.text !== v.state.doc.toString()) return { kind: "hidden" };
+    return { kind: "done", count: c.plain.length };
+  });
+
+  function spellErrorSummaryLabel(count: number): string {
+    return count === 1 ? t("editor.spellErrorsOne") : t("editor.spellErrorsOther", { n: count });
+  }
+
   const themeCompartment = new Compartment();
 
   function cmThemeBundle() {
@@ -392,8 +422,16 @@
     {:else}
       <span class="muted">{t("editor.selectFile")}</span>
     {/if}
-    {#if spellWorkerInflight > 0 && path?.endsWith(".typ") && appSettings.spellcheckLanguage !== "off"}
-      <span class="spell-status" role="status" aria-live="polite">{t("editor.spellChecking")}</span>
+    {#if path?.endsWith(".typ") && appSettings.spellcheckLanguage !== "off"}
+      {#if spellHeadState.kind === "checking"}
+        <span class="spell-status spell-status-busy" role="status" aria-live="polite"
+          >{t("editor.spellChecking")}</span
+        >
+      {:else if spellHeadState.kind === "done"}
+        <span class="spell-status" role="status" aria-live="polite"
+          >{spellErrorSummaryLabel(spellHeadState.count)}</span
+        >
+      {/if}
     {/if}
   </div>
   <div class="cm-host" bind:this={host}></div>
@@ -435,6 +473,9 @@
     font-size: 0.85rem;
     font-weight: 500;
     color: var(--pd-muted);
+  }
+
+  .spell-status-busy {
     animation: spell-pulse 1.1s ease-in-out infinite;
   }
 
@@ -449,7 +490,7 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .spell-status {
+    .spell-status-busy {
       animation: none;
       opacity: 0.9;
     }
