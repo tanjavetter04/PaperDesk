@@ -59,10 +59,16 @@ export async function writeTextFile(
   return invoke("write_text_file", { relativePath, content });
 }
 
+export type PreviewSource = { path: string; text: string };
+
 export async function compileProject(
   entry?: string | null,
+  previewSource?: PreviewSource | null,
 ): Promise<CompileOutcome> {
-  return invoke("compile_project", { entry: entry ?? null });
+  return invoke("compile_project", {
+    entry: entry ?? null,
+    previewSource: previewSource ?? null,
+  });
 }
 
 export async function exportPdf(entry?: string | null): Promise<void> {

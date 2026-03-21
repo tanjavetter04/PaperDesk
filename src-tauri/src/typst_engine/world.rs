@@ -26,6 +26,8 @@ pub struct PaperDeskWorld {
     workdir: Option<PathBuf>,
     root: PathBuf,
     main: FileId,
+    /// Unsaved editor buffers: compiled as if written to disk (live preview).
+    source_overrides: FxHashMap<FileId, EcoString>,
     library: LazyHash<Library>,
     book: LazyHash<FontBook>,
     fonts: Vec<FontSlot>,
@@ -34,33 +36,47 @@ pub struct PaperDeskWorld {
     now: Now,
 }
 
+fn resolve_source_file_id(root: &Path, relative: &str) -> Result<FileId, WorldCreationError> {
+    let rel = Path::new(relative);
+    if rel.is_absolute() || rel.components().any(|c| matches!(c, std::path::Component::ParentDir))
+    {
+        return Err(WorldCreationError::InvalidMainPath);
+    }
+
+    let input_path = root.join(rel);
+    let input_path = input_path.canonicalize().map_err(|err| match err.kind() {
+        io::ErrorKind::NotFound => WorldCreationError::InputNotFound(input_path),
+        _ => WorldCreationError::Io(err),
+    })?;
+
+    let vpath = VirtualPath::within_root(&input_path, root).ok_or(WorldCreationError::InputOutsideRoot)?;
+    Ok(FileId::new(None, vpath))
+}
+
 impl PaperDeskWorld {
     /// `main_relative` is a project-relative path using `/` (e.g. `main.typ`).
+    ///
+    /// `source_overrides`: project-relative paths and UTF-8 text used instead of on-disk contents
+    /// for those files (e.g. the open editor buffer before autosave).
     pub fn new(
         project_root: PathBuf,
         main_relative: &str,
         package_cache: PathBuf,
+        source_overrides: Vec<(String, String)>,
     ) -> Result<Self, WorldCreationError> {
         let root = project_root.canonicalize().map_err(|err| match err.kind() {
             io::ErrorKind::NotFound => WorldCreationError::RootNotFound(project_root),
             _ => WorldCreationError::Io(err),
         })?;
 
-        let rel = Path::new(main_relative);
-        if rel.is_absolute() || rel.components().any(|c| matches!(c, std::path::Component::ParentDir))
-        {
-            return Err(WorldCreationError::InvalidMainPath);
+        let main = resolve_source_file_id(&root, main_relative)?;
+
+        let mut overrides: FxHashMap<FileId, EcoString> = FxHashMap::default();
+        for (rel, text) in source_overrides {
+            let rel = rel.replace('\\', "/");
+            let id = resolve_source_file_id(&root, rel.trim())?;
+            overrides.insert(id, text.into());
         }
-
-        let input_path = root.join(rel);
-        let input_path = input_path.canonicalize().map_err(|err| match err.kind() {
-            io::ErrorKind::NotFound => WorldCreationError::InputNotFound(input_path),
-            _ => WorldCreationError::Io(err),
-        })?;
-
-        let main_path = VirtualPath::within_root(&input_path, &root)
-            .ok_or(WorldCreationError::InputOutsideRoot)?;
-        let main = FileId::new(None, main_path);
 
         let library = Library::builder().with_inputs(Dict::default()).build();
 
@@ -75,6 +91,7 @@ impl PaperDeskWorld {
             workdir: std::env::current_dir().ok(),
             root,
             main,
+            source_overrides: overrides,
             library: LazyHash::new(library),
             book: LazyHash::new(fonts.book),
             fonts: fonts.fonts,
@@ -144,11 +161,13 @@ impl World for PaperDeskWorld {
     }
 
     fn source(&self, id: FileId) -> FileResult<Source> {
-        self.slot(id, |slot| slot.source(&self.root, &self.package_storage))
+        let ov = &self.source_overrides;
+        self.slot(id, |slot| slot.source(&self.root, &self.package_storage, ov))
     }
 
     fn file(&self, id: FileId) -> FileResult<Bytes> {
-        self.slot(id, |slot| slot.file(&self.root, &self.package_storage))
+        let ov = &self.source_overrides;
+        self.slot(id, |slot| slot.file(&self.root, &self.package_storage, ov))
     }
 
     fn font(&self, index: usize) -> Option<Font> {
@@ -200,9 +219,10 @@ impl FileSlot {
         &mut self,
         project_root: &Path,
         package_storage: &PackageStorage,
+        overrides: &FxHashMap<FileId, EcoString>,
     ) -> FileResult<Source> {
         self.source.get_or_init(
-            || read(self.id, project_root, package_storage),
+            || load_bytes(self.id, project_root, package_storage, overrides),
             |data, prev| {
                 let text = decode_utf8(&data)?;
                 if let Some(mut prev) = prev {
@@ -219,9 +239,10 @@ impl FileSlot {
         &mut self,
         project_root: &Path,
         package_storage: &PackageStorage,
+        overrides: &FxHashMap<FileId, EcoString>,
     ) -> FileResult<Bytes> {
         self.file.get_or_init(
-            || read(self.id, project_root, package_storage),
+            || load_bytes(self.id, project_root, package_storage, overrides),
             |data, _| Ok(Bytes::new(data)),
         )
     }
@@ -291,6 +312,18 @@ fn system_path(
     }
 
     id.vpath().resolve(root).ok_or(FileError::AccessDenied)
+}
+
+fn load_bytes(
+    id: FileId,
+    project_root: &Path,
+    package_storage: &PackageStorage,
+    overrides: &FxHashMap<FileId, EcoString>,
+) -> FileResult<Vec<u8>> {
+    if let Some(t) = overrides.get(&id) {
+        return Ok(t.as_bytes().to_vec());
+    }
+    read(id, project_root, package_storage)
 }
 
 fn read(

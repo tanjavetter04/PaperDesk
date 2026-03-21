@@ -13,6 +13,13 @@ struct PaperDeskMeta {
     entry: Option<String>,
 }
 
+/// Open editor buffer for live preview (compiled instead of on-disk text for that path).
+#[derive(Deserialize)]
+pub struct PreviewSource {
+    pub path: String,
+    pub text: String,
+}
+
 fn resolve_entry(root: &Path, entry: Option<String>) -> String {
     if let Some(e) = entry {
         let t = e.trim();
@@ -35,6 +42,7 @@ fn resolve_entry(root: &Path, entry: Option<String>) -> String {
 pub fn compile_project(
     state: tauri::State<'_, AppState>,
     entry: Option<String>,
+    preview_source: Option<PreviewSource>,
 ) -> Result<CompileOutcome, String> {
     let root = state
         .project_root
@@ -43,10 +51,14 @@ pub fn compile_project(
         .clone()
         .ok_or_else(|| "no project open".to_string())?;
     let rel = resolve_entry(&root, entry);
+    let overrides = preview_source
+        .map(|p| vec![(p.path, p.text)])
+        .unwrap_or_default();
     let mut world = PaperDeskWorld::new(
         root,
         &rel,
         state.typst_package_cache.clone(),
+        overrides,
     )
     .map_err(|e| e.to_string())?;
 
@@ -84,6 +96,7 @@ pub fn export_pdf_to_path(
         root,
         &rel,
         state.typst_package_cache.clone(),
+        vec![],
     )
     .map_err(|e| e.to_string())?;
 

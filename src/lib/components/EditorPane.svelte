@@ -24,7 +24,8 @@
   }: {
     path: string | null;
     onDocumentChange: (text: string) => void;
-    onReady?: (text: string) => void;
+    /** Fires after `path` was read from disk and the editor instance is created. */
+    onReady?: (text: string, loadedPath: string) => void;
   } = $props();
 
   let host = $state<HTMLDivElement | null>(null);
@@ -70,7 +71,7 @@
       const text = await readTextFile(p);
       if (cancelled) return;
       view?.destroy();
-      onReady?.(text);
+      onReady?.(text, p);
       const state = EditorState.create({
         doc: text,
         extensions: extensions((s) => onDocumentChange(s)),

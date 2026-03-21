@@ -13,7 +13,7 @@
     exportPdf,
     closeProject,
   } from "$lib/tauri/api";
-  import type { CompileDiagnostic } from "$lib/tauri/api";
+  import type { CompileDiagnostic, PreviewSource } from "$lib/tauri/api";
 
   let rootPath = $state<string | null>(null);
   let files = $state<string[]>([]);
@@ -26,6 +26,10 @@
 
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
   let compileTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Monotonically increasing token so only the latest compile applies (stale responses are dropped). */
+  let compileGeneration = 0;
+  /** `buffer` is only a safe preview overlay when it matches the open tab (see EditorPane onReady). */
+  let editorBufferPath = $state<string | null>(null);
 
   async function refreshFiles() {
     try {
@@ -50,7 +54,6 @@
       }
       rootPath = open;
       await refreshFiles();
-      scheduleCompile();
     })();
     return () => {
       gone = true;
@@ -86,12 +89,19 @@
     }, 1200);
   }
 
+  function previewSourceForCompile(): PreviewSource | null {
+    if (!selectedPath || editorBufferPath !== selectedPath) return null;
+    return { path: selectedPath, text: buffer };
+  }
+
   function scheduleCompile() {
     if (compileTimer) clearTimeout(compileTimer);
     compileLabel = "running";
+    const gen = ++compileGeneration;
     compileTimer = setTimeout(async () => {
       try {
-        const r = await compileProject(null);
+        const r = await compileProject(null, previewSourceForCompile());
+        if (gen !== compileGeneration) return;
         diagnostics = r.diagnostics;
         revokePdf();
         if (r.ok && r.pdf_base64) {
@@ -107,6 +117,7 @@
         }
         await refreshFiles();
       } catch (e) {
+        if (gen !== compileGeneration) return;
         compileLabel = "err";
         diagnostics = [
           {
@@ -118,7 +129,7 @@
           },
         ];
       }
-    }, 650);
+    }, 280);
   }
 
   function onEditorChange(text: string) {
@@ -140,6 +151,8 @@
       }
     }
     selectedPath = p;
+    editorBufferPath = null;
+    scheduleCompile();
   }
 
   async function goHub() {
@@ -166,9 +179,12 @@
 
   async function compileNow() {
     if (compileTimer) clearTimeout(compileTimer);
+    compileGeneration += 1;
     compileLabel = "running";
+    const gen = compileGeneration;
     try {
-      const r = await compileProject(null);
+      const r = await compileProject(null, previewSourceForCompile());
+      if (gen !== compileGeneration) return;
       diagnostics = r.diagnostics;
       revokePdf();
       if (r.ok && r.pdf_base64) {
@@ -184,6 +200,7 @@
       }
       await refreshFiles();
     } catch (e) {
+      if (gen !== compileGeneration) return;
       compileLabel = "err";
       diagnostics = [
         {
@@ -219,8 +236,10 @@
       <EditorPane
         path={selectedPath}
         onDocumentChange={onEditorChange}
-        onReady={(t) => {
+        onReady={(t, loadedPath) => {
           buffer = t;
+          editorBufferPath = loadedPath;
+          scheduleCompile();
         }}
       />
       <DiagnosticsPanel {diagnostics} />
@@ -322,6 +341,7 @@
     flex: 1;
     display: grid;
     grid-template-columns: 220px minmax(0, 1fr) minmax(240px, 38vw);
+    grid-template-rows: minmax(0, 1fr);
     min-height: 0;
   }
 
@@ -339,7 +359,9 @@
   }
 
   .preview-col {
+    min-width: 0;
     min-height: 0;
+    height: 100%;
     display: flex;
     flex-direction: column;
   }
