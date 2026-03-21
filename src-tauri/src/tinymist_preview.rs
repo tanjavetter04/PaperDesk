@@ -6,6 +6,9 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
 use tauri::Emitter;
 use tungstenite::stream::MaybeTlsStream;
 use tungstenite::Error as WsError;
@@ -16,6 +19,9 @@ use crate::AppState;
 
 const DATA_PLANE_PREFIX: &str = "Data plane server listening on: ";
 const CONTROL_PANEL_PREFIX: &str = "Control panel server listening on: ";
+
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 /// Prefer explicit `TINYMIST_PATH`, then the binary shipped in `resources/bin/`, then `PATH`.
 ///
@@ -93,6 +99,15 @@ fn materialized_bundled_tinymist(bundled: &Path, cache_dir: &Path) -> io::Result
         }
     }
     Ok(dest)
+}
+
+fn configure_background_child(cmd: &mut Command) {
+    #[cfg(target_os = "windows")]
+    {
+        // `tinymist.exe` is a console app; without this Windows may flash a console window
+        // when PaperDesk starts the preview process from the GUI app.
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
 }
 
 fn parse_data_plane_url(line: &str) -> Option<String> {
@@ -394,6 +409,7 @@ pub fn ensure_running(app: &tauri::AppHandle, state: &AppState) -> Result<String
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::piped());
+    configure_background_child(&mut cmd);
 
     let mut child = cmd.spawn().map_err(|e| {
         format!(
