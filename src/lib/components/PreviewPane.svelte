@@ -9,13 +9,10 @@
   let {
     pdfUrl,
     page = 1,
-    /** When true (e.g. splitter drag), skip resize-driven PDF re-render until released. */
-    suspendResize = false,
   }: {
     pdfUrl: string | null;
     /** 1-based page for scroll sync (pdf.js). */
     page?: number;
-    suspendResize?: boolean;
   } = $props();
 
   let slot = $state<HTMLDivElement | null>(null);
@@ -23,17 +20,45 @@
 
   const safePage = $derived(Math.max(1, Math.floor(page)));
   let loadError = $state<string | null>(null);
-  /** Bumped by ResizeObserver so all pages re-scale without reloading the PDF. */
+  /** Full pdf.js re-render generation (URL, settle after resize, etc.). */
   let layoutRev = $state(0);
   /** Bumped after a full paint of all page canvases (for scroll sync). */
   let renderSerial = $state(0);
 
   let loaded = $state<{ doc: PDFDocumentProxy; url: string } | null>(null);
 
+  /** Last CSS width used when canvases were rendered (pdf.js). */
+  let renderedAtWidth = $state(0);
+  /** Live width of the scroll viewport (ResizeObserver). */
+  let frameClientWidth = $state(0);
+
+  const displayScale = $derived.by(() => {
+    const rw = renderedAtWidth;
+    const cw = frameClientWidth;
+    if (rw <= 0 || cw <= 0) return 1;
+    return Math.min(4, Math.max(0.05, cw / rw));
+  });
+
+  const scaledContentHeight = $derived.by(() => {
+    void renderSerial;
+    void displayScale;
+    const root = pagesRoot;
+    if (!root) return 0;
+    return Math.max(0, root.offsetHeight * displayScale);
+  });
+
+  /** For debounced settle callback (non-reactive read). */
+  const renderedWidthRef = { current: 0 };
+  $effect(() => {
+    renderedWidthRef.current = renderedAtWidth;
+  });
+
   $effect(() => {
     const url = pdfUrl;
     if (!url) {
       loadError = null;
+      renderedAtWidth = 0;
+      frameClientWidth = 0;
       const cur = untrack(() => loaded);
       if (cur) {
         loaded = null;
@@ -43,7 +68,6 @@
     }
 
     let cancelled = false;
-    /** True once this load run finished (success, cancel-after-open, or error). Avoids destroying the worker transport while the PDF is still in `loaded`. */
     let loadHandled = false;
     loadError = null;
     const loadingTask = pdfjs.getDocument({ url });
@@ -133,6 +157,8 @@
           root.appendChild(c);
         }
         if (!cancelled) {
+          renderedAtWidth = cssW;
+          frameClientWidth = Math.round(wrap.clientWidth);
           renderSerial += 1;
         }
       } catch (e) {
@@ -163,33 +189,31 @@
     });
   });
 
-  /** ResizeObserver callback cannot read reactive props; keep latest flag here. */
-  const suspendResizeRef = { current: false };
-  $effect(() => {
-    suspendResizeRef.current = suspendResize;
-  });
-
-  let prevSuspendResize = false;
-  $effect(() => {
-    if (prevSuspendResize && !suspendResize) {
-      layoutRev += 1;
-    }
-    prevSuspendResize = suspendResize;
-  });
-
+  /** Live width + debounced sharp re-render after resize settles (no pdf.js during drag). */
+  const RESIZE_SETTLE_MS = 280;
   $effect(() => {
     const wrap = slot;
     if (!wrap) return;
-    let lastW = -1;
-    const ro = new ResizeObserver((entries) => {
-      if (suspendResizeRef.current) return;
-      const w = Math.round(entries[0]?.contentRect.width ?? wrap.clientWidth);
-      if (w === lastW) return;
-      lastW = w;
-      layoutRev += 1;
+    let settleTimer = 0;
+
+    const ro = new ResizeObserver(() => {
+      frameClientWidth = Math.round(wrap.clientWidth);
+      clearTimeout(settleTimer);
+      settleTimer = window.setTimeout(() => {
+        settleTimer = 0;
+        const cw = Math.round(wrap.clientWidth);
+        const rw = renderedWidthRef.current;
+        if (rw > 0 && Math.abs(cw - rw) > 2) {
+          layoutRev += 1;
+        }
+      }, RESIZE_SETTLE_MS);
     });
     ro.observe(wrap);
-    return () => ro.disconnect();
+    frameClientWidth = Math.round(wrap.clientWidth);
+    return () => {
+      ro.disconnect();
+      clearTimeout(settleTimer);
+    };
   });
 </script>
 
@@ -197,7 +221,18 @@
   <div class="head">Preview</div>
   <div class="frame-wrap" bind:this={slot}>
     {#if pdfUrl}
-      <div class="pages-stack" class:dim={!!loadError} bind:this={pagesRoot}></div>
+      <div
+        class="scale-viewport"
+        style:min-height="{scaledContentHeight > 0 ? `${scaledContentHeight}px` : undefined}"
+      >
+        <div
+          class="scale-inner"
+          style:width={renderedAtWidth > 0 ? `${renderedAtWidth}px` : "100%"}
+          style:transform="scale({displayScale})"
+        >
+          <div class="pages-stack" class:dim={!!loadError} bind:this={pagesRoot}></div>
+        </div>
+      </div>
       {#if loadError}
         <p class="err-overlay">{loadError}</p>
       {/if}
@@ -237,6 +272,19 @@
     background: #525659;
   }
 
+  .scale-viewport {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .scale-inner {
+    transform-origin: top center;
+    flex-shrink: 0;
+    will-change: transform;
+  }
+
   .pages-stack {
     display: flex;
     flex-direction: column;
@@ -249,9 +297,6 @@
     opacity: 0.25;
   }
 
-  /* No max-width: 100% here: while the splitter narrows the column before pdf.js
-     re-renders, that rule would shrink only the CSS width and keep the old height,
-     which looks vertically squashed. Overflow scrolls horizontally instead. */
   :global(.pages-stack .pdf-canvas) {
     display: block;
     margin: 0 auto;

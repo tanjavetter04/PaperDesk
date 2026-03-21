@@ -44,8 +44,6 @@
   let previewWidthPx = $state(360);
   /** Bumped on window resize so aria / max width stay in sync with the grid. */
   let layoutMeasure = $state(0);
-  /** While true, PDF preview skips full re-render on each column resize (see PreviewPane). */
-  let splitterDragging = $state(false);
 
   let mainGridColumns = $derived(
     `${SIDEBAR_W}px minmax(0, 1fr) ${SPLITTER_W}px ${previewWidthPx}px`,
@@ -86,7 +84,6 @@
   let splitDragStartW = 0;
 
   function onSplitPointerDown(e: PointerEvent) {
-    splitterDragging = true;
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     splitDragStartX = e.clientX;
     splitDragStartW = previewWidthPx;
@@ -100,7 +97,6 @@
   }
 
   function onSplitPointerUp(e: PointerEvent) {
-    splitterDragging = false;
     const el = e.currentTarget as HTMLElement;
     if (el.hasPointerCapture(e.pointerId)) {
       el.releasePointerCapture(e.pointerId);
@@ -378,11 +374,7 @@
       onpointercancel={onSplitPointerUp}
     ></div>
     <aside class="preview-col">
-      <PreviewPane
-        pdfUrl={pdfUrl}
-        page={previewPage}
-        suspendResize={splitterDragging}
-      />
+      <PreviewPane pdfUrl={pdfUrl} page={previewPage} />
     </aside>
   </div>
 </div>
