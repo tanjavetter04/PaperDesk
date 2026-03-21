@@ -4,8 +4,10 @@
     clearDefaultProjectDir,
     setDefaultProjectDir,
     setFontSizePx,
+    setSpellcheckLanguage,
     setTheme,
     setZoteroBibRelativePath,
+    type SpellcheckLanguage,
     type ThemeMode,
   } from "$lib/appSettings.svelte";
   import { locale, setLocale, t } from "$lib/i18n/locale.svelte";
@@ -23,24 +25,30 @@
   /** Native `<select>` popups stay dark on some WebKit/GTK builds; custom list uses app colors only. */
   let localeMenuOpen = $state(false);
   let themeMenuOpen = $state(false);
+  let spellMenuOpen = $state(false);
   let langRoot = $state<HTMLDivElement | null>(null);
   let themeRoot = $state<HTMLDivElement | null>(null);
+  let spellRoot = $state<HTMLDivElement | null>(null);
 
   $effect(() => {
     if (!open) {
       localeMenuOpen = false;
       themeMenuOpen = false;
+      spellMenuOpen = false;
     }
   });
 
   function onDocPointerDown(e: PointerEvent) {
-    if (!localeMenuOpen && !themeMenuOpen) return;
+    if (!localeMenuOpen && !themeMenuOpen && !spellMenuOpen) return;
     const node = e.target as Node;
     if (localeMenuOpen && langRoot && !langRoot.contains(node)) {
       localeMenuOpen = false;
     }
     if (themeMenuOpen && themeRoot && !themeRoot.contains(node)) {
       themeMenuOpen = false;
+    }
+    if (spellMenuOpen && spellRoot && !spellRoot.contains(node)) {
+      spellMenuOpen = false;
     }
   }
 
@@ -52,6 +60,17 @@
   function pickTheme(next: ThemeMode) {
     setTheme(next);
     themeMenuOpen = false;
+  }
+
+  function spellLangLabel(lang: SpellcheckLanguage): string {
+    if (lang === "off") return t("settings.spellLangOff");
+    if (lang === "de") return t("settings.spellLangDe");
+    return t("settings.spellLangEn");
+  }
+
+  function pickSpellLang(next: SpellcheckLanguage) {
+    setSpellcheckLanguage(next);
+    spellMenuOpen = false;
   }
 
   async function chooseDefaultProjectFolder() {
@@ -77,6 +96,228 @@
     }
   }
 </script>
+
+<svelte:window onpointerdown={onDocPointerDown} />
+
+{#if open}
+  <div
+    class="backdrop"
+    role="presentation"
+    onclick={(e) => e.target === e.currentTarget && onClose()}
+  ></div>
+  <div
+    class="modal"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="settings-title"
+  >
+    <h2 id="settings-title">{t("settings.title")}</h2>
+    <label class="field">
+      {t("settings.language")}
+      <div class="custom-select" bind:this={langRoot}>
+        <button
+          type="button"
+          class="custom-select-trigger"
+          aria-haspopup="listbox"
+          aria-expanded={localeMenuOpen}
+          aria-label={t("settings.language")}
+          onclick={() => {
+            themeMenuOpen = false;
+            spellMenuOpen = false;
+            localeMenuOpen = !localeMenuOpen;
+          }}
+        >
+          <span
+            >{locale.value === "de"
+              ? t("settings.languageDe")
+              : t("settings.languageEn")}</span
+          >
+        </button>
+        {#if localeMenuOpen}
+          <div class="custom-select-list" role="listbox">
+            <button
+              type="button"
+              role="option"
+              class="custom-select-option"
+              aria-selected={locale.value === "de"}
+              onclick={() => pickLocale("de")}
+            >
+              {t("settings.languageDe")}
+            </button>
+            <button
+              type="button"
+              role="option"
+              class="custom-select-option"
+              aria-selected={locale.value === "en"}
+              onclick={() => pickLocale("en")}
+            >
+              {t("settings.languageEn")}
+            </button>
+          </div>
+        {/if}
+      </div>
+    </label>
+    <label class="field">
+      {t("settings.theme")}
+      <div class="custom-select" bind:this={themeRoot}>
+        <button
+          type="button"
+          class="custom-select-trigger"
+          aria-haspopup="listbox"
+          aria-expanded={themeMenuOpen}
+          aria-label={t("settings.theme")}
+          onclick={() => {
+            localeMenuOpen = false;
+            spellMenuOpen = false;
+            themeMenuOpen = !themeMenuOpen;
+          }}
+        >
+          <span
+            >{appSettings.theme === "dark"
+              ? t("settings.themeDark")
+              : t("settings.themeLight")}</span
+          >
+        </button>
+        {#if themeMenuOpen}
+          <div class="custom-select-list" role="listbox">
+            <button
+              type="button"
+              role="option"
+              class="custom-select-option"
+              aria-selected={appSettings.theme === "dark"}
+              onclick={() => pickTheme("dark")}
+            >
+              {t("settings.themeDark")}
+            </button>
+            <button
+              type="button"
+              role="option"
+              class="custom-select-option"
+              aria-selected={appSettings.theme === "light"}
+              onclick={() => pickTheme("light")}
+            >
+              {t("settings.themeLight")}
+            </button>
+          </div>
+        {/if}
+      </div>
+    </label>
+    <label class="field">
+      {t("settings.spellcheckLanguage")}
+      <div class="custom-select" bind:this={spellRoot}>
+        <button
+          type="button"
+          class="custom-select-trigger"
+          aria-haspopup="listbox"
+          aria-expanded={spellMenuOpen}
+          aria-label={t("settings.spellcheckLanguage")}
+          onclick={() => {
+            localeMenuOpen = false;
+            themeMenuOpen = false;
+            spellMenuOpen = !spellMenuOpen;
+          }}
+        >
+          <span>{spellLangLabel(appSettings.spellcheckLanguage)}</span>
+        </button>
+        {#if spellMenuOpen}
+          <div class="custom-select-list" role="listbox">
+            <button
+              type="button"
+              role="option"
+              class="custom-select-option"
+              aria-selected={appSettings.spellcheckLanguage === "off"}
+              onclick={() => pickSpellLang("off")}
+            >
+              {t("settings.spellLangOff")}
+            </button>
+            <button
+              type="button"
+              role="option"
+              class="custom-select-option"
+              aria-selected={appSettings.spellcheckLanguage === "de"}
+              onclick={() => pickSpellLang("de")}
+            >
+              {t("settings.spellLangDe")}
+            </button>
+            <button
+              type="button"
+              role="option"
+              class="custom-select-option"
+              aria-selected={appSettings.spellcheckLanguage === "en"}
+              onclick={() => pickSpellLang("en")}
+            >
+              {t("settings.spellLangEn")}
+            </button>
+          </div>
+        {/if}
+      </div>
+      <p class="hint">{t("settings.spellcheckHint")}</p>
+    </label>
+    <label class="field">
+      {t("settings.fontSize")}
+      <div class="range-row">
+        <input
+          type="range"
+          class="range"
+          min="12"
+          max="22"
+          step="1"
+          value={appSettings.fontSizePx}
+          aria-valuemin={12}
+          aria-valuemax={22}
+          aria-valuenow={appSettings.fontSizePx}
+          oninput={(e) => setFontSizePx(+e.currentTarget.value)}
+        />
+        <span class="range-value">{appSettings.fontSizePx}px</span>
+      </div>
+    </label>
+    <label class="field">
+      <span class="field-label">{t("settings.zoteroBibPath")}</span>
+      <input
+        type="text"
+        class="text-input"
+        spellcheck="false"
+        autocomplete="off"
+        bind:value={bibDraft}
+        onblur={() => void applyBibPath()}
+        onkeydown={(e) => {
+          if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur();
+        }}
+      />
+      <p class="hint">{t("settings.zoteroBibHint")}</p>
+    </label>
+    <div class="field">
+      <span class="field-label">{t("settings.defaultProjectFolder")}</span>
+      <p
+        class="path-preview"
+        title={appSettings.defaultProjectDir || undefined}
+      >
+        {appSettings.defaultProjectDir.trim()
+          ? appSettings.defaultProjectDir
+          : t("settings.defaultFolderNone")}
+      </p>
+      <div class="folder-btns">
+        <button
+          type="button"
+          class="secondary"
+          onclick={() => void chooseDefaultProjectFolder()}
+        >
+          {t("settings.chooseDefaultFolder")}
+        </button>
+        {#if appSettings.defaultProjectDir.trim()}
+          <button type="button" class="ghost" onclick={clearDefaultProjectDir}>
+            {t("settings.clearDefaultFolder")}
+          </button>
+        {/if}
+      </div>
+    </div>
+    <div class="btns">
+      <button type="button" class="primary" onclick={onClose}>
+        {t("settings.close")}
+      </button>
+    </div>
+  </div>
+{/if}
 
 <style>
   .backdrop {
@@ -304,172 +545,3 @@
     border-color: var(--pd-border);
   }
 </style>
-
-<svelte:window onpointerdown={onDocPointerDown} />
-
-{#if open}
-  <div
-    class="backdrop"
-    role="presentation"
-    onclick={(e) => e.target === e.currentTarget && onClose()}
-  ></div>
-  <div
-    class="modal"
-    role="dialog"
-    aria-modal="true"
-    aria-labelledby="settings-title"
-  >
-    <h2 id="settings-title">{t("settings.title")}</h2>
-    <label class="field">
-      {t("settings.language")}
-      <div class="custom-select" bind:this={langRoot}>
-        <button
-          type="button"
-          class="custom-select-trigger"
-          aria-haspopup="listbox"
-          aria-expanded={localeMenuOpen}
-          aria-label={t("settings.language")}
-          onclick={() => {
-            themeMenuOpen = false;
-            localeMenuOpen = !localeMenuOpen;
-          }}
-        >
-          <span
-            >{locale.value === "de"
-              ? t("settings.languageDe")
-              : t("settings.languageEn")}</span
-          >
-        </button>
-        {#if localeMenuOpen}
-          <div class="custom-select-list" role="listbox">
-            <button
-              type="button"
-              role="option"
-              class="custom-select-option"
-              aria-selected={locale.value === "de"}
-              onclick={() => pickLocale("de")}
-            >
-              {t("settings.languageDe")}
-            </button>
-            <button
-              type="button"
-              role="option"
-              class="custom-select-option"
-              aria-selected={locale.value === "en"}
-              onclick={() => pickLocale("en")}
-            >
-              {t("settings.languageEn")}
-            </button>
-          </div>
-        {/if}
-      </div>
-    </label>
-    <label class="field">
-      {t("settings.theme")}
-      <div class="custom-select" bind:this={themeRoot}>
-        <button
-          type="button"
-          class="custom-select-trigger"
-          aria-haspopup="listbox"
-          aria-expanded={themeMenuOpen}
-          aria-label={t("settings.theme")}
-          onclick={() => {
-            localeMenuOpen = false;
-            themeMenuOpen = !themeMenuOpen;
-          }}
-        >
-          <span
-            >{appSettings.theme === "dark"
-              ? t("settings.themeDark")
-              : t("settings.themeLight")}</span
-          >
-        </button>
-        {#if themeMenuOpen}
-          <div class="custom-select-list" role="listbox">
-            <button
-              type="button"
-              role="option"
-              class="custom-select-option"
-              aria-selected={appSettings.theme === "dark"}
-              onclick={() => pickTheme("dark")}
-            >
-              {t("settings.themeDark")}
-            </button>
-            <button
-              type="button"
-              role="option"
-              class="custom-select-option"
-              aria-selected={appSettings.theme === "light"}
-              onclick={() => pickTheme("light")}
-            >
-              {t("settings.themeLight")}
-            </button>
-          </div>
-        {/if}
-      </div>
-    </label>
-    <label class="field">
-      {t("settings.fontSize")}
-      <div class="range-row">
-        <input
-          type="range"
-          class="range"
-          min="12"
-          max="22"
-          step="1"
-          value={appSettings.fontSizePx}
-          aria-valuemin={12}
-          aria-valuemax={22}
-          aria-valuenow={appSettings.fontSizePx}
-          oninput={(e) => setFontSizePx(+e.currentTarget.value)}
-        />
-        <span class="range-value">{appSettings.fontSizePx}px</span>
-      </div>
-    </label>
-    <label class="field">
-      <span class="field-label">{t("settings.zoteroBibPath")}</span>
-      <input
-        type="text"
-        class="text-input"
-        spellcheck="false"
-        autocomplete="off"
-        bind:value={bibDraft}
-        onblur={() => void applyBibPath()}
-        onkeydown={(e) => {
-          if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur();
-        }}
-      />
-      <p class="hint">{t("settings.zoteroBibHint")}</p>
-    </label>
-    <div class="field">
-      <span class="field-label">{t("settings.defaultProjectFolder")}</span>
-      <p
-        class="path-preview"
-        title={appSettings.defaultProjectDir || undefined}
-      >
-        {appSettings.defaultProjectDir.trim()
-          ? appSettings.defaultProjectDir
-          : t("settings.defaultFolderNone")}
-      </p>
-      <div class="folder-btns">
-        <button
-          type="button"
-          class="secondary"
-          onclick={() => void chooseDefaultProjectFolder()}
-        >
-          {t("settings.chooseDefaultFolder")}
-        </button>
-        {#if appSettings.defaultProjectDir.trim()}
-          <button type="button" class="ghost" onclick={clearDefaultProjectDir}>
-            {t("settings.clearDefaultFolder")}
-          </button>
-        {/if}
-      </div>
-    </div>
-    <div class="btns">
-      <button type="button" class="primary" onclick={onClose}>
-        {t("settings.close")}
-      </button>
-    </div>
-  </div>
-{/if}

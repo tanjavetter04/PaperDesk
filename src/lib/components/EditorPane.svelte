@@ -19,7 +19,10 @@
   import { search, searchKeymap } from "@codemirror/search";
   import { oneDark } from "@codemirror/theme-one-dark";
   import { appSettings } from "$lib/appSettings.svelte";
+  import { locale, t } from "$lib/i18n/locale.svelte";
   import { paperDeskLightCm } from "$lib/editor/cmTheme";
+  import { getSpellchecker } from "$lib/editor/spellDictionaries";
+  import { typstSpellDiagnostics } from "$lib/editor/spellcheckTypst";
 
   /** Stable object; parent may replace `save` / `compile` so CodeMirror always calls the latest logic. */
   type HostCommands = {
@@ -27,7 +30,6 @@
     compile?: () => void | Promise<void>;
   };
   import { readTextFile } from "$lib/tauri/api";
-  import { t } from "$lib/i18n/locale.svelte";
   import type { CompileDiagnostic } from "$lib/tauri/api";
   import {
     compileDiagnosticCursorPos,
@@ -70,6 +72,8 @@
 
   let host = $state<HTMLDivElement | null>(null);
   let view = $state<EditorView | null>(null);
+  /** Bumps when the open document text changes (spellcheck debounce). */
+  let docRevision = $state(0);
 
   const themeCompartment = new Compartment();
 
@@ -133,6 +137,7 @@
       EditorView.updateListener.of((u) => {
         if (u.docChanged) {
           onChange(u.state.doc.toString());
+          docRevision = docRevision + 1;
         }
         if (onCursor && (u.selectionSet || u.docChanged)) {
           const head = u.state.selection.main.head;
@@ -187,12 +192,52 @@
     const v = view;
     const p = path;
     const diags = compileDiagnostics;
+    const spellLang = appSettings.spellcheckLanguage;
+    void docRevision;
+    void locale.value;
+
     if (!v) return;
-    if (!p?.endsWith(".typ")) {
-      v.dispatch(setDiagnostics(v.state, []));
+
+    const compileCm =
+      p?.endsWith(".typ") ? compileDiagnosticsToCm(v.state.doc, p, diags) : [];
+
+    if (spellLang === "off" || !p?.endsWith(".typ")) {
+      v.dispatch(setDiagnostics(v.state, compileCm));
       return;
     }
-    v.dispatch(setDiagnostics(v.state, compileDiagnosticsToCm(v.state.doc, p, diags)));
+
+    v.dispatch(setDiagnostics(v.state, compileCm));
+
+    let cancelled = false;
+    const docSnap = v.state.doc.toString();
+    const spellUnknown = t("editor.spellUnknown");
+    const spellSuggestions = t("editor.spellSuggestions");
+    const handle = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const spell = await getSpellchecker(spellLang);
+          if (cancelled || v.state.doc.toString() !== docSnap) return;
+          const spellDiags = typstSpellDiagnostics(
+            v.state.doc,
+            spell,
+            spellUnknown,
+            spellSuggestions,
+            spellLang,
+          );
+          if (cancelled) return;
+          const compileCm2 =
+            p?.endsWith(".typ") ? compileDiagnosticsToCm(v.state.doc, p, diags) : [];
+          v.dispatch(setDiagnostics(v.state, [...compileCm2, ...spellDiags]));
+        } catch (e) {
+          console.warn("PaperDesk spellcheck:", e);
+        }
+      })();
+    }, 480);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(handle);
+    };
   });
 
   $effect(() => {

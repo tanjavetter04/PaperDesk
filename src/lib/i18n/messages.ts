@@ -19,6 +19,13 @@ export const messageKeys = [
   "settings.defaultFolderNone",
   "settings.zoteroBibPath",
   "settings.zoteroBibHint",
+  "settings.spellcheckLanguage",
+  "settings.spellLangOff",
+  "settings.spellLangDe",
+  "settings.spellLangEn",
+  "settings.spellcheckHint",
+  "editor.spellUnknown",
+  "editor.spellSuggestions",
   "project.bibExternalChange",
   "project.bibReloadFromDisk",
   "hub.openProjectFolder",
@@ -124,6 +131,14 @@ const de: Table = {
     "Zotero-Bibliographie (relativer Pfad im Projekt)",
   "settings.zoteroBibHint":
     "Zotero: Better BibTeX installieren, Export ins Projekt (z. B. literatur.bib) und „Keep updated“ aktivieren. PaperDesk beobachtet diese Datei und aktualisiert Vorschau und Diagnose.",
+  "settings.spellcheckLanguage": "Rechtschreibprüfung (Editor)",
+  "settings.spellLangOff": "Aus",
+  "settings.spellLangDe": "Deutsch",
+  "settings.spellLangEn": "Englisch",
+  "settings.spellcheckHint":
+    "Lokale Hunspell-Wörterbücher (Deutsch / Englisch). Gilt für .typ-Dateien; Typst-Markup wird nur grob ausgeblendet.",
+  "editor.spellUnknown": "Unbekanntes Wort",
+  "editor.spellSuggestions": "Vorschläge",
   "project.bibExternalChange":
     "Die Bibliographie-Datei wurde außerhalb von PaperDesk geändert (z. B. durch Zotero). Deine ungespeicherten Änderungen in diesem Tab gehen verloren, wenn du neu lädst.",
   "project.bibReloadFromDisk": "Neu laden",
@@ -233,6 +248,14 @@ const en: Table = {
   "settings.zoteroBibPath": "Zotero bibliography (relative path in project)",
   "settings.zoteroBibHint":
     "In Zotero: install Better BibTeX, export into the project (e.g. literatur.bib), and enable “Keep updated”. PaperDesk watches this file and refreshes preview and diagnostics.",
+  "settings.spellcheckLanguage": "Spell checking (editor)",
+  "settings.spellLangOff": "Off",
+  "settings.spellLangDe": "German",
+  "settings.spellLangEn": "English",
+  "settings.spellcheckHint":
+    "Local Hunspell dictionaries (German / English). Applies to .typ files; Typst markup is only heuristically filtered.",
+  "editor.spellUnknown": "Unknown word",
+  "editor.spellSuggestions": "Suggestions",
   "project.bibExternalChange":
     "The bibliography file was changed outside PaperDesk (e.g. by Zotero). Reloading will discard your unsaved edits in this tab.",
   "project.bibReloadFromDisk": "Reload from disk",
