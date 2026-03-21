@@ -10,6 +10,7 @@
   import MessageModal from "$lib/components/MessageModal.svelte";
   import ConfirmModal from "$lib/components/ConfirmModal.svelte";
   import HistoryPanel from "$lib/components/HistoryPanel.svelte";
+  import AiAssistantPanel from "$lib/components/AiAssistantPanel.svelte";
   import {
     getOpenProject,
     renameProject,
@@ -32,6 +33,7 @@
     restartBibWatcher,
   } from "$lib/tauri/api";
   import type {
+    AiEditorContextHost,
     CompileDiagnostic,
     HistoryCommitSummary,
     HistoryStatus,
@@ -83,6 +85,10 @@
   let historyDiffOpen = $state(false);
   let historyRestoreCommitId = $state<string | null>(null);
   let editorReloadTick = $state(0);
+  let aiPanelOpen = $state(false);
+  const aiEditorRef: AiEditorContextHost = {
+    read: () => ({ path: null, selectedText: "" }),
+  };
 
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
   let diagnosticsTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1031,6 +1037,9 @@
       <span class="pill" data-state={previewLabel}>{previewStatusLabel()}</span>
     </span>
     <span class="spacer"></span>
+    <button type="button" class="action" onclick={() => (aiPanelOpen = true)}>
+      {t("project.aiToolbar")}
+    </button>
     <button type="button" class="action" onclick={() => void openHistoryPanel()}>
       {t("history.toolbar")}
     </button>
@@ -1077,6 +1086,7 @@
         reloadTick={editorReloadTick}
         reloadFromDiskTick={reloadFromDiskTick}
         hostCommands={editorHostCommands}
+        aiEditorRef={aiEditorRef}
         onDocumentChange={onEditorChange}
         onReady={onEditorReady}
         compileDiagnostics={diagnostics}
@@ -1194,6 +1204,12 @@
     cancelLabel={t("common.cancel")}
     onConfirm={() => void confirmHistoryRestore()}
     onCancel={() => (historyRestoreCommitId = null)}
+  />
+
+  <AiAssistantPanel
+    open={aiPanelOpen}
+    onClose={() => (aiPanelOpen = false)}
+    editorContext={aiEditorRef}
   />
 
   <HistoryPanel

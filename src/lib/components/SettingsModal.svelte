@@ -12,7 +12,13 @@
   } from "$lib/appSettings.svelte";
   import { locale, setLocale, t } from "$lib/i18n/locale.svelte";
   import type { Locale } from "$lib/i18n/messages";
-  import { pickProjectFolder, restartBibWatcher } from "$lib/tauri/api";
+  import {
+    aiGetStatus,
+    aiSetConfig,
+    pickProjectFolder,
+    restartBibWatcher,
+    type AiStatus,
+  } from "$lib/tauri/api";
 
   let {
     open,
@@ -82,8 +88,35 @@
 
   let bibDraft = $state(appSettings.zoteroBibRelativePath);
 
+  let aiStatus = $state<AiStatus | null>(null);
+  let aiEnabled = $state(false);
+  let aiApiKeyDraft = $state("");
+  let aiApiKeyTouched = $state(false);
+  let aiBaseUrl = $state("");
+  let aiModel = $state("");
+  let aiSaveFlash = $state<"ok" | "err" | null>(null);
+
   $effect(() => {
     if (open) bibDraft = appSettings.zoteroBibRelativePath;
+  });
+
+  $effect(() => {
+    if (!open) return;
+    void (async () => {
+      try {
+        const s = await aiGetStatus();
+        aiStatus = s;
+        aiEnabled = s.enabled;
+        aiApiKeyDraft = "";
+        aiApiKeyTouched = false;
+        aiBaseUrl = s.baseUrl;
+        aiModel = s.model;
+        aiSaveFlash = null;
+      } catch {
+        aiStatus = null;
+        aiSaveFlash = null;
+      }
+    })();
   });
 
   async function applyBibPath() {
@@ -94,6 +127,29 @@
     } catch {
       /* no project open or watcher failed — ignore */
     }
+  }
+
+  async function saveAiSettings() {
+    aiSaveFlash = null;
+    try {
+      await aiSetConfig({
+        enabled: aiEnabled,
+        baseUrl: aiBaseUrl.trim(),
+        model: aiModel.trim(),
+        ...(aiApiKeyTouched ? { apiKey: aiApiKeyDraft } : {}),
+      });
+      aiStatus = await aiGetStatus();
+      aiApiKeyDraft = "";
+      aiApiKeyTouched = false;
+      aiSaveFlash = "ok";
+    } catch {
+      aiSaveFlash = "err";
+    }
+  }
+
+  function markRemoveAiKey() {
+    aiApiKeyTouched = true;
+    aiApiKeyDraft = "";
   }
 </script>
 
@@ -310,6 +366,61 @@
           </button>
         {/if}
       </div>
+    </div>
+    <div class="ai-block">
+      <h3 class="ai-heading">{t("settings.aiHeading")}</h3>
+      <label class="check-row">
+        <input type="checkbox" bind:checked={aiEnabled} />
+        <span>{t("settings.aiEnable")}</span>
+      </label>
+      <label class="field">
+        {t("settings.aiApiKey")}
+        <input
+          type="password"
+          class="text-input"
+          spellcheck="false"
+          autocomplete="off"
+          placeholder={t("settings.aiApiKeyPlaceholder")}
+          bind:value={aiApiKeyDraft}
+          oninput={() => {
+            aiApiKeyTouched = true;
+          }}
+        />
+        {#if aiStatus?.hasApiKey}
+          <button type="button" class="ghost small-ghost" onclick={markRemoveAiKey}>
+            {t("settings.aiRemoveKey")}
+          </button>
+        {/if}
+      </label>
+      <label class="field">
+        {t("settings.aiBaseUrl")}
+        <input
+          type="text"
+          class="text-input"
+          spellcheck="false"
+          autocomplete="off"
+          bind:value={aiBaseUrl}
+        />
+      </label>
+      <label class="field">
+        {t("settings.aiModel")}
+        <input
+          type="text"
+          class="text-input"
+          spellcheck="false"
+          autocomplete="off"
+          bind:value={aiModel}
+        />
+      </label>
+      <p class="hint">{t("settings.aiHint")}</p>
+      {#if aiSaveFlash === "ok"}
+        <p class="ai-flash ok">{t("settings.aiSaved")}</p>
+      {:else if aiSaveFlash === "err"}
+        <p class="ai-flash err">{t("settings.aiSaveError")}</p>
+      {/if}
+      <button type="button" class="secondary" onclick={() => void saveAiSettings()}>
+        {t("settings.aiSave")}
+      </button>
     </div>
     <div class="btns">
       <button type="button" class="primary" onclick={onClose}>
@@ -543,5 +654,54 @@
   .ghost:hover {
     color: var(--pd-text);
     border-color: var(--pd-border);
+  }
+
+  .ai-block {
+    margin: 0.5rem 0 1rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--pd-border);
+  }
+
+  .ai-heading {
+    margin: 0 0 0.65rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--pd-text);
+  }
+
+  .check-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.85rem;
+    font-size: 1rem;
+    color: var(--pd-text);
+    cursor: pointer;
+  }
+
+  .check-row input {
+    accent-color: var(--pd-accent);
+    width: 1rem;
+    height: 1rem;
+  }
+
+  .small-ghost {
+    margin-top: 0.35rem;
+    padding: 0.2rem 0;
+    font-size: 0.88rem;
+    align-self: flex-start;
+  }
+
+  .ai-flash {
+    margin: 0 0 0.5rem;
+    font-size: 0.88rem;
+  }
+
+  .ai-flash.ok {
+    color: color-mix(in srgb, #4ade80 80%, var(--pd-text));
+  }
+
+  .ai-flash.err {
+    color: color-mix(in srgb, #f87171 85%, var(--pd-text));
   }
 </style>

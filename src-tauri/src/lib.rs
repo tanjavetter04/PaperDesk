@@ -10,6 +10,7 @@ use std::sync::Mutex;
 
 use tauri::Manager;
 
+use commands::ai::{ai_chat, ai_get_status, ai_set_config};
 use commands::compile_cmd::{compile_project, compile_project_at_path, export_pdf_to_path};
 use commands::fs::{
     create_project_dir, list_project_files, move_project_path, read_text_file, write_text_file,
@@ -114,6 +115,9 @@ pub fn run() {
             history_diff_workdir,
             history_restore,
             restart_bib_watcher,
+            ai_get_status,
+            ai_set_config,
+            ai_chat,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

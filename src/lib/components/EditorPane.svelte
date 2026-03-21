@@ -38,7 +38,7 @@
     compile?: () => void | Promise<void>;
   };
   import { readTextFile } from "$lib/tauri/api";
-  import type { CompileDiagnostic } from "$lib/tauri/api";
+  import type { AiEditorContextHost, CompileDiagnostic } from "$lib/tauri/api";
   import {
     compileDiagnosticCursorPos,
     compileDiagnosticsToCm,
@@ -62,11 +62,13 @@
     focusDiagnosticRequest,
     previewScroll,
     hostCommands,
+    aiEditorRef = undefined,
   }: {
     path: string | null;
     reloadTick?: number;
     reloadFromDiskTick?: number;
     hostCommands?: HostCommands;
+    aiEditorRef?: AiEditorContextHost;
     onDocumentChange: (text: string) => void;
     /** Fires after `path` was read from disk and the editor instance is created. */
     onReady?: (text: string, loadedPath: string) => void;
@@ -236,6 +238,23 @@
 
     return () => {
       cancelled = true;
+    };
+  });
+
+  $effect(() => {
+    void view;
+    void path;
+    const ref = aiEditorRef;
+    if (!ref) return;
+    ref.read = () => {
+      const v = view;
+      const p = path;
+      if (!v) return { path: p, selectedText: "" };
+      const { from, to } = v.state.selection.main;
+      return { path: p, selectedText: v.state.doc.sliceString(from, to) };
+    };
+    return () => {
+      ref.read = () => ({ path: null, selectedText: "" });
     };
   });
 

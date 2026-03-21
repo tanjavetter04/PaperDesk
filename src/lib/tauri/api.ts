@@ -219,3 +219,54 @@ export async function historyRestore(
 export async function restartBibWatcher(relativePath: string): Promise<void> {
   return invoke("restart_bib_watcher", { relativePath });
 }
+
+// --- Optional AI assistant (OpenAI-compatible API, e.g. Featherless) ---
+
+/** Parent-owned ref; EditorPane assigns `read` when the editor exists. */
+export type AiEditorContextHost = {
+  read: () => { path: string | null; selectedText: string };
+};
+
+export type AiStatus = {
+  enabled: boolean;
+  hasApiKey: boolean;
+  baseUrl: string;
+  model: string;
+  defaultBaseUrl: string;
+  defaultModel: string;
+};
+
+export async function aiGetStatus(): Promise<AiStatus> {
+  return invoke("ai_get_status");
+}
+
+export type AiSetConfigPayload = {
+  enabled: boolean;
+  /** Omit to leave unchanged; empty string clears stored key. */
+  apiKey?: string | null;
+  /** Omit unchanged; empty string resets to default base URL. */
+  baseUrl?: string | null;
+  /** Omit unchanged; empty string resets to default model. */
+  model?: string | null;
+};
+
+export async function aiSetConfig(payload: AiSetConfigPayload): Promise<AiStatus> {
+  return invoke("ai_set_config", { payload });
+}
+
+export type AiChatMessage = {
+  role: string;
+  content: string;
+};
+
+export async function aiChat(
+  messages: AiChatMessage[],
+  temperature?: number | null,
+): Promise<string> {
+  return invoke("ai_chat", {
+    payload: {
+      messages,
+      temperature: temperature ?? null,
+    },
+  });
+}
