@@ -522,7 +522,7 @@
     if (!p) {
       view?.destroy();
       view = null;
-      el.innerHTML = "";
+      el.textContent = "";
       return;
     }
 

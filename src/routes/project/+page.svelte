@@ -573,7 +573,7 @@
       } catch {
         /* best effort */
       }
-      const watch = appSettings.zoteroBibPath?.trim();
+      const watch = appSettings.zoteroBibRelativePath?.trim();
       if (watch && selectedPath?.endsWith(".bib")) {
         void restartBibWatcher(selectedPath);
       }
@@ -620,7 +620,7 @@
       } catch {
         /* best effort */
       }
-      const watch = appSettings.zoteroBibPath?.trim();
+      const watch = appSettings.zoteroBibRelativePath?.trim();
       if (watch && selectedPath?.endsWith(".bib")) {
         void restartBibWatcher(selectedPath);
       }

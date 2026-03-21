@@ -1,5 +1,17 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
+
+function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  if (
+    typeof window === "undefined" ||
+    !(window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__
+  ) {
+    return Promise.reject(
+      new Error("Tauri backend unavailable. Start the app with `tauri dev`."),
+    );
+  }
+  return tauriInvoke<T>(cmd, args);
+}
 
 export type CompileDiagnostic = {
   severity: string;
