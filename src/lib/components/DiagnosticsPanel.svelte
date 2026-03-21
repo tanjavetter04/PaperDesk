@@ -43,8 +43,8 @@
   .panel {
     display: flex;
     flex-direction: column;
+    flex-shrink: 0;
     border-top: 1px solid var(--pd-border);
-    min-height: 7rem;
     max-height: 10rem;
     background: var(--pd-bg);
   }
@@ -60,7 +60,7 @@
 
   .body {
     overflow: auto;
-    flex: 1;
+    max-height: 6.75rem;
     padding: 0.35rem 0.5rem;
   }
 
