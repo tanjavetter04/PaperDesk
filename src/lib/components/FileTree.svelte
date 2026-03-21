@@ -295,7 +295,7 @@
   }
 
   .move-wrap:has(.icon-btn:disabled) {
-    cursor: help;
+    cursor: default;
   }
 
   .move-wrap .icon-btn:disabled {

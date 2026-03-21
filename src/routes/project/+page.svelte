@@ -6,6 +6,8 @@
   import EditorPane from "$lib/components/EditorPane.svelte";
   import PreviewPane from "$lib/components/PreviewPane.svelte";
   import DiagnosticsPanel from "$lib/components/DiagnosticsPanel.svelte";
+  import InputModal from "$lib/components/InputModal.svelte";
+  import MessageModal from "$lib/components/MessageModal.svelte";
   import {
     getOpenProject,
     listProjectEntries,
@@ -42,6 +44,11 @@
   let previewError = $state<string | null>(null);
   let previewScroll = $state({ tick: 0, line0: 0, column0: 0 });
   let pendingPreviewJump = $state<PreviewScrollToSource | null>(null);
+
+  let newFileModalOpen = $state(false);
+  let newFolderModalOpen = $state(false);
+  let messageModalOpen = $state(false);
+  let messageModalText = $state("");
 
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
   let diagnosticsTimer: ReturnType<typeof setTimeout> | null = null;
@@ -222,20 +229,45 @@
     return i === -1 ? "" : path.slice(0, i);
   }
 
-  async function handleNewFile() {
-    const raw =
-      typeof window !== "undefined"
-        ? window.prompt("Dateiname (z. B. chapter.typ)", "chapter.typ")
-        : null;
-    if (raw == null) return;
+  function newItemHint(): string {
+    return treeTargetDir
+      ? `Neu in: ${treeTargetDir}`
+      : "Neu im Projektstamm";
+  }
+
+  function formatUserError(e: unknown): string {
+    if (e instanceof Error) return e.message;
+    if (typeof e === "string") return e;
+    if (e && typeof e === "object" && "message" in e) {
+      const m = (e as { message: unknown }).message;
+      if (typeof m === "string") return m;
+    }
+    return "Unbekannter Fehler.";
+  }
+
+  function showMessage(text: string) {
+    messageModalText = text;
+    messageModalOpen = true;
+  }
+
+  function handleNewFile() {
+    newFileModalOpen = true;
+  }
+
+  function handleNewFolder() {
+    newFolderModalOpen = true;
+  }
+
+  async function confirmNewFile(raw: string) {
+    newFileModalOpen = false;
     const base = safeTreeBasename(raw);
     if (!base) {
-      window.alert("Ungültiger Name (keine Schrägstriche oder ..).");
+      showMessage("Ungültiger Name (keine Schrägstriche oder ..).");
       return;
     }
     const rel = treeTargetDir ? `${treeTargetDir}/${base}` : base;
     if (projectEntries.some((e) => e.path === rel)) {
-      window.alert("Dieser Pfad existiert bereits.");
+      showMessage("Dieser Pfad existiert bereits.");
       return;
     }
     try {
@@ -243,24 +275,20 @@
       await refreshFiles();
       await selectFile(rel);
     } catch (e) {
-      window.alert(String(e));
+      showMessage(formatUserError(e));
     }
   }
 
-  async function handleNewFolder() {
-    const raw =
-      typeof window !== "undefined"
-        ? window.prompt("Ordnername", "sections")
-        : null;
-    if (raw == null) return;
+  async function confirmNewFolder(raw: string) {
+    newFolderModalOpen = false;
     const base = safeTreeBasename(raw);
     if (!base) {
-      window.alert("Ungültiger Name (keine Schrägstriche oder ..).");
+      showMessage("Ungültiger Name (keine Schrägstriche oder ..).");
       return;
     }
     const rel = treeTargetDir ? `${treeTargetDir}/${base}` : base;
     if (projectEntries.some((e) => e.path === rel)) {
-      window.alert("Dieser Pfad existiert bereits.");
+      showMessage("Dieser Pfad existiert bereits.");
       return;
     }
     try {
@@ -268,7 +296,7 @@
       await refreshFiles();
       treeTargetDir = rel;
     } catch (e) {
-      window.alert(String(e));
+      showMessage(formatUserError(e));
     }
   }
 
@@ -281,7 +309,7 @@
     const to = dest === "" ? base : `${dest}/${base}`;
     if (to === from) return;
     if (projectEntries.some((e) => e.path === to)) {
-      window.alert("Ziel existiert bereits.");
+      showMessage("Ziel existiert bereits.");
       return;
     }
     try {
@@ -296,7 +324,7 @@
       editorBufferPath = null;
       treeTargetDir = parentDirOfRel(to);
     } catch (e) {
-      window.alert(String(e));
+      showMessage(formatUserError(e));
     }
   }
 
@@ -555,6 +583,30 @@
       <PreviewPane {previewUrl} error={previewError} />
     </aside>
   </div>
+
+  <InputModal
+    open={newFileModalOpen}
+    title="Neue Datei"
+    hint={`${newItemHint()} · nur Dateiname, z. B. chapter.typ`}
+    initialValue="chapter.typ"
+    submitLabel="Anlegen"
+    onClose={() => (newFileModalOpen = false)}
+    onSubmit={(v) => void confirmNewFile(v)}
+  />
+  <InputModal
+    open={newFolderModalOpen}
+    title="Neuer Ordner"
+    hint={newItemHint()}
+    initialValue="sections"
+    submitLabel="Anlegen"
+    onClose={() => (newFolderModalOpen = false)}
+    onSubmit={(v) => void confirmNewFolder(v)}
+  />
+  <MessageModal
+    open={messageModalOpen}
+    message={messageModalText}
+    onClose={() => (messageModalOpen = false)}
+  />
 </div>
 
 <style>
