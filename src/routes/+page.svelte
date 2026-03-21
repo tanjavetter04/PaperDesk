@@ -18,6 +18,7 @@
   import { appSettings } from "$lib/appSettings.svelte";
   import { t } from "$lib/i18n/locale.svelte";
   import { openSettingsModal } from "$lib/settingsModal.svelte";
+  import { openProjectEditorUi } from "$lib/tauri/projectEditorWindow";
 
   let recent = $state<string[]>([]);
   let busy = $state(false);
@@ -134,7 +135,7 @@
       });
       if (!p) return;
       await openProject(p);
-      await goto("/project");
+      await openProjectEditorUi();
     } catch (e) {
       error = formatHubError(String(e));
     } finally {
@@ -147,7 +148,7 @@
     busy = true;
     try {
       await openProject(p);
-      await goto("/project");
+      await openProjectEditorUi();
     } catch (e) {
       error = formatHubError(String(e));
     } finally {
@@ -168,13 +169,13 @@
     error = null;
     busy = true;
     try {
-      if (kind === "thesis") {
-        await createFromTemplate("thesis", parent, name);
-      } else {
-        await createEmptyProject(parent, name);
-      }
+      const projectPath =
+        kind === "thesis"
+          ? await createFromTemplate("thesis", parent, name)
+          : await createEmptyProject(parent, name);
+      await openProject(projectPath);
       closeNewProjectModal();
-      await goto("/project");
+      await openProjectEditorUi();
     } catch (e) {
       error = formatHubError(String(e));
     } finally {

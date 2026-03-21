@@ -111,6 +111,24 @@ export async function writeTextFile(
   return invoke("write_text_file", { relativePath, content });
 }
 
+/** Saves decoded Base64 bytes under the project root (only `assets/*` image paths allowed). */
+export async function writeBinaryFile(
+  relativePath: string,
+  contentBase64: string,
+): Promise<void> {
+  return invoke("write_binary_file", { relativePath, contentBase64 });
+}
+
+/** System clipboard via Rust (Linux-friendly): image → `assets/paste-*.png`, else plain text. */
+export type ClipboardPasteForTypstResult =
+  | { kind: "none" }
+  | { kind: "text"; content: string }
+  | { kind: "image"; relativePath: string };
+
+export async function clipboardPasteForTypstEditor(): Promise<ClipboardPasteForTypstResult> {
+  return invoke("clipboard_paste_for_typst");
+}
+
 export type PreviewSource = {
   path: string;
   text: string;

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onDestroy, onMount, tick } from "svelte";
   import { listen } from "@tauri-apps/api/event";
-  import { goto } from "$app/navigation";
+  import { leaveProjectEditorUi } from "$lib/tauri/projectEditorWindow";
   import FileTree from "$lib/components/FileTree.svelte";
   import EditorPane from "$lib/components/EditorPane.svelte";
   import PreviewPane from "$lib/components/PreviewPane.svelte";
@@ -745,7 +745,7 @@
       const open = await getOpenProject();
       if (gone) return;
       if (!open) {
-        await goto("/");
+        await leaveProjectEditorUi();
         return;
       }
       rootPath = open;
@@ -949,7 +949,7 @@
       /* best effort */
     }
     await closeProject();
-    await goto("/");
+    await leaveProjectEditorUi();
   }
 
   async function doExport() {
@@ -1116,6 +1116,14 @@
         compileDiagnostics={diagnostics}
         focusDiagnosticRequest={diagnosticFocus}
         {previewScroll}
+        onBinaryAssetCreated={(rel) => {
+          projectEntries = upsertProjectEntries(
+            projectEntries,
+            ...entriesForNewFile(rel),
+          );
+          void historyCheckpoint("paste-image", true).catch(() => {});
+        }}
+        onPasteImageError={showMessage}
       />
       <DiagnosticsPanel {diagnostics} onJumpTo={jumpToDiagnosticInEditor} />
     </section>

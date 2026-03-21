@@ -63,6 +63,8 @@ export const messageKeys = [
   "editor.spellChecking",
   "editor.spellErrorsOne",
   "editor.spellErrorsOther",
+  "editor.pasteImageFailed",
+  "editor.pasteImageUnreadable",
   "project.bibExternalChange",
   "project.bibReloadFromDisk",
   "hub.openProjectFolder",
@@ -274,6 +276,9 @@ const de: Table = {
   "editor.spellChecking": "Rechtschreibung wird geprüft …",
   "editor.spellErrorsOne": "1 Rechtschreibfehler",
   "editor.spellErrorsOther": "{n} Rechtschreibfehler",
+  "editor.pasteImageFailed": "Bild konnte nicht eingefügt werden: {detail}",
+  "editor.pasteImageUnreadable":
+    "Die Zwischenablage sieht nach einem Bild aus, aber es ließ sich nicht lesen ({detail}). Rechtsklick aufs Bild → „Bild kopieren“ oder die Datei ins Projekt ziehen kann helfen.",
   "project.bibExternalChange":
     "Die Bibliographie-Datei wurde außerhalb von PaperDesk geändert (z. B. durch Zotero). Deine ungespeicherten Änderungen in diesem Tab gehen verloren, wenn du neu lädst.",
   "project.bibReloadFromDisk": "Neu laden",
@@ -496,6 +501,9 @@ const en: Table = {
   "editor.spellChecking": "Checking spelling…",
   "editor.spellErrorsOne": "1 spelling error",
   "editor.spellErrorsOther": "{n} spelling errors",
+  "editor.pasteImageFailed": "Could not paste image: {detail}",
+  "editor.pasteImageUnreadable":
+    "The clipboard seems to hold an image, but it could not be read ({detail}). Try “Copy image” from the context menu, or drag the file into the project.",
   "project.bibExternalChange":
     "The bibliography file was changed outside PaperDesk (e.g. by Zotero). Reloading will discard your unsaved edits in this tab.",
   "project.bibReloadFromDisk": "Reload from disk",

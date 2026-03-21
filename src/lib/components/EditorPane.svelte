@@ -36,7 +36,11 @@
     save?: () => void | Promise<void>;
     compile?: () => void | Promise<void>;
   };
-  import { readTextFile } from "$lib/tauri/api";
+  import {
+    clipboardPasteForTypstEditor,
+    readTextFile,
+    writeBinaryFile,
+  } from "$lib/tauri/api";
   import type { AiEditorContextHost, CompileDiagnostic } from "$lib/tauri/api";
   import {
     compileDiagnosticCursorPos,
@@ -63,6 +67,8 @@
     previewScroll,
     hostCommands,
     aiEditorRef = undefined,
+    onBinaryAssetCreated,
+    onPasteImageError,
   }: {
     path: string | null;
     reloadTick?: number;
@@ -83,6 +89,10 @@
     focusDiagnosticRequest?: { tick: number; target: CompileDiagnostic | null };
     /** Live-preview click → source (0-based line/column from tinymist). */
     previewScroll?: { tick: number; line0: number; column0: number };
+    /** After an image was saved under the project (e.g. paste); refresh file tree. */
+    onBinaryAssetCreated?: (relativePath: string) => void;
+    /** User-visible error when clipboard image save/insert fails. */
+    onPasteImageError?: (message: string) => void;
   } = $props();
 
   let host = $state<HTMLDivElement | null>(null);
@@ -143,6 +153,122 @@
     return new TextEncoder().encode(doc.sliceString(0, utf16Head)).length;
   }
 
+  function mimeToImageExt(mime: string): string {
+    const m = mime.toLowerCase().split(";")[0]?.trim() ?? "";
+    if (m === "image/png") return "png";
+    if (m === "image/jpeg" || m === "image/jpg") return "jpg";
+    if (m === "image/webp") return "webp";
+    if (m === "image/gif") return "gif";
+    return "png";
+  }
+
+  /** Path from the current file’s directory to another project-relative POSIX path. */
+  function posixRelativePath(fromFileRel: string, toProjectRel: string): string {
+    const slash = fromFileRel.lastIndexOf("/");
+    const dir = slash === -1 ? "" : fromFileRel.slice(0, slash);
+    const a = dir.split("/").filter(Boolean);
+    const b = toProjectRel.split("/").filter(Boolean);
+    let i = 0;
+    while (i < a.length && i < b.length && a[i] === b[i]) i += 1;
+    const ups = a.length - i;
+    const rest = b.slice(i);
+    const prefix = ups > 0 ? "../".repeat(ups) : "";
+    return prefix + rest.join("/");
+  }
+
+  function uint8ToBase64(bytes: Uint8Array): string {
+    let binary = "";
+    const len = bytes.byteLength;
+    const chunk = 0x8000;
+    for (let i = 0; i < len; i += chunk) {
+      const sub = bytes.subarray(i, Math.min(i + chunk, len));
+      binary += String.fromCharCode.apply(null, sub as unknown as number[]);
+    }
+    return btoa(binary);
+  }
+
+  function clipboardSuggestsImage(cd: DataTransfer): boolean {
+    for (const t of cd.types) {
+      if (t.toLowerCase().startsWith("image/")) return true;
+    }
+    for (const item of Array.from(cd.items)) {
+      if (item.type.toLowerCase().startsWith("image/")) return true;
+    }
+    return false;
+  }
+
+  /** Screenshot / file item / drag-style `files` / rich HTML with inline data URL. */
+  function syncImageFileFromClipboard(cd: DataTransfer): File | null {
+    for (const item of Array.from(cd.items)) {
+      if (!item.type.toLowerCase().startsWith("image/")) continue;
+      if (item.kind === "file") {
+        const file = item.getAsFile();
+        if (file && file.size > 0) return file;
+      }
+    }
+    const files = cd.files;
+    if (files?.length) {
+      for (let i = 0; i < files.length; i++) {
+        const file = files.item(i);
+        if (file && file.type.toLowerCase().startsWith("image/") && file.size > 0) {
+          return file;
+        }
+      }
+    }
+    const html = cd.getData("text/html");
+    if (html && html.length > 40) {
+      const m = html.match(
+        /<\s*img[^>]+src\s*=\s*["'](data:image\/(?:png|jpeg|jpg|gif|webp);base64,[^"']+)["']/i,
+      );
+      if (m?.[1]) {
+        const dataUrl = m[1];
+        try {
+          const comma = dataUrl.indexOf(",");
+          if (comma < 0) return null;
+          const header = dataUrl.slice(0, comma).toLowerCase();
+          const b64 = dataUrl.slice(comma + 1).replace(/\s/g, "");
+          const mimeMatch = header.match(/data:(image\/[a-z0-9.+_-]+)/);
+          const mime = mimeMatch?.[1] ?? "image/png";
+          const binary = atob(b64);
+          const bytes = new Uint8Array(binary.length);
+          for (let j = 0; j < binary.length; j++) bytes[j] = binary.charCodeAt(j);
+          const ext = mimeToImageExt(mime);
+          return new File([bytes], `paste.${ext}`, { type: mime });
+        } catch {
+          return null;
+        }
+      }
+    }
+    return null;
+  }
+
+  async function imageFileFromClipboardApi(): Promise<File | null> {
+    if (typeof navigator === "undefined" || !navigator.clipboard?.read) return null;
+    try {
+      const items = await navigator.clipboard.read();
+      for (const ci of items) {
+        for (const type of ci.types) {
+          if (!type.toLowerCase().startsWith("image/")) continue;
+          const blob = await ci.getType(type);
+          if (blob.size < 1) continue;
+          const ext = mimeToImageExt(type);
+          return new File([blob], `paste.${ext}`, { type });
+        }
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  }
+
+  function pastePlainFromClipboard(view: EditorView, cd: DataTransfer) {
+    const raw = cd.getData("text/plain") || cd.getData("text/uri-list") || "";
+    view.dispatch(view.state.replaceSelection(raw), {
+      userEvent: "input.paste",
+      scrollIntoView: true,
+    });
+  }
+
   function extensions(
     onChange: (s: string) => void,
     onCursor: ((utf8: number) => void) | undefined,
@@ -151,8 +277,165 @@
       | undefined,
     cmds: HostCommands | undefined,
     typstFile: boolean,
+    pasteImageMode: "typst" | "markdown" | null,
+    editorPathForPaste: string | null,
+    onBinaryAssetCreatedCb: ((rel: string) => void) | undefined,
+    onPasteImageErrorCb: ((msg: string) => void) | undefined,
   ) {
+    async function savePastedImageAndInsert(view: EditorView, file: File) {
+      const ep = editorPathForPaste;
+      const mode = pasteImageMode;
+      if (!ep || !mode) return;
+      const mime = (file.type || "image/png").toLowerCase();
+      const ext = mimeToImageExt(mime);
+      const name = `paste-${crypto.randomUUID()}.${ext}`;
+      const relProject = `assets/${name}`;
+      let bytes: Uint8Array;
+      try {
+        bytes = new Uint8Array(await file.arrayBuffer());
+      } catch (e) {
+        const d = e instanceof Error ? e.message : String(e);
+        onPasteImageErrorCb?.(t("editor.pasteImageFailed", { detail: d }));
+        return;
+      }
+      const b64 = uint8ToBase64(bytes);
+      try {
+        await writeBinaryFile(relProject, b64);
+      } catch (e) {
+        const d =
+          typeof e === "string" ? e : e instanceof Error ? e.message : String(e);
+        onPasteImageErrorCb?.(t("editor.pasteImageFailed", { detail: d }));
+        return;
+      }
+      onBinaryAssetCreatedCb?.(relProject);
+      const relDoc = posixRelativePath(ep, relProject);
+      const insert =
+        mode === "markdown" ? `![](${relDoc})` : `#image("${relDoc}")`;
+      const { from, to } = view.state.selection.main;
+      const full = `${insert}\n`;
+      view.dispatch({
+        changes: { from, to, insert: full },
+        selection: { anchor: from + full.length },
+      });
+    }
+
     return [
+      ...(pasteImageMode === "typst" && editorPathForPaste
+        ? [
+            Prec.highest(
+              EditorView.domEventHandlers({
+                paste(event, view) {
+                  if (view.state.readOnly) return false;
+                  event.preventDefault();
+                  const ep = editorPathForPaste;
+                  void (async () => {
+                    try {
+                      const r = await clipboardPasteForTypstEditor();
+                      if (r.kind === "none" || !ep) return;
+                      if (r.kind === "image") {
+                        const img = r as {
+                          relativePath?: string;
+                          relative_path?: string;
+                        };
+                        const relProj =
+                          (typeof img.relativePath === "string"
+                            ? img.relativePath
+                            : undefined) ??
+                          (typeof img.relative_path === "string"
+                            ? img.relative_path
+                            : "") ??
+                          "";
+                        if (!relProj) {
+                          onPasteImageErrorCb?.(
+                            t("editor.pasteImageFailed", {
+                              detail: "missing relativePath",
+                            }),
+                          );
+                          return;
+                        }
+                        onBinaryAssetCreatedCb?.(relProj);
+                        const relDoc = posixRelativePath(ep, relProj);
+                        const full = `#image("${relDoc}")\n`;
+                        const { from, to } = view.state.selection.main;
+                        view.dispatch({
+                          changes: { from, to, insert: full },
+                          selection: { anchor: from + full.length },
+                        });
+                      } else if (r.kind === "text") {
+                        view.dispatch(view.state.replaceSelection(r.content), {
+                          userEvent: "input.paste",
+                          scrollIntoView: true,
+                        });
+                      }
+                    } catch (e) {
+                      const d =
+                        typeof e === "string"
+                          ? e
+                          : e instanceof Error
+                            ? e.message
+                            : String(e);
+                      onPasteImageErrorCb?.(
+                        t("editor.pasteImageFailed", { detail: d }),
+                      );
+                    }
+                  })();
+                  return true;
+                },
+              }),
+            ),
+          ]
+        : []),
+      ...(pasteImageMode === "markdown" && editorPathForPaste
+        ? [
+            Prec.highest(
+              EditorView.domEventHandlers({
+                paste(event, view) {
+                  const cd = event.clipboardData;
+                  if (!cd) return false;
+
+                  const file = syncImageFileFromClipboard(cd);
+                  if (file) {
+                    event.preventDefault();
+                    void savePastedImageAndInsert(view, file).catch((e) => {
+                      const d = e instanceof Error ? e.message : String(e);
+                      onPasteImageErrorCb?.(
+                        t("editor.pasteImageFailed", { detail: d }),
+                      );
+                    });
+                    return true;
+                  }
+
+                  if (clipboardSuggestsImage(cd)) {
+                    event.preventDefault();
+                    const plain = cd.getData("text/plain") || "";
+                    void (async () => {
+                      let detail = "Clipboard API";
+                      try {
+                        const fromApi = await imageFileFromClipboardApi();
+                        if (fromApi && fromApi.size > 0) {
+                          await savePastedImageAndInsert(view, fromApi);
+                          return;
+                        }
+                      } catch (e) {
+                        detail = e instanceof Error ? e.message : String(e);
+                      }
+                      if (plain) {
+                        pastePlainFromClipboard(view, cd);
+                        return;
+                      }
+                      onPasteImageErrorCb?.(
+                        t("editor.pasteImageUnreadable", { detail }),
+                      );
+                    })();
+                    return true;
+                  }
+
+                  return false;
+                },
+              }),
+            ),
+          ]
+        : []),
       lineNumbers(),
       highlightActiveLineGutter(),
       highlightActiveLine(),
@@ -239,6 +522,11 @@
       const text = await readTextFile(p);
       if (cancelled) return;
       view?.destroy();
+      const pasteMode = p.endsWith(".typ")
+        ? ("typst" as const)
+        : p.endsWith(".md")
+          ? ("markdown" as const)
+          : null;
       const state = EditorState.create({
         doc: text,
         extensions: extensions(
@@ -247,6 +535,10 @@
           onTypstPreviewSourceScroll,
           hostCommands,
           p.endsWith(".typ"),
+          pasteMode,
+          pasteMode ? p : null,
+          onBinaryAssetCreated,
+          onPasteImageError,
         ),
       });
       view = new EditorView({ state, parent: el });
