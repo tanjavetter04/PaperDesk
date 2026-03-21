@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy } from "svelte";
+  import { onDestroy, onMount, tick } from "svelte";
   import { goto } from "$app/navigation";
   import FileTree from "$lib/components/FileTree.svelte";
   import EditorPane from "$lib/components/EditorPane.svelte";
@@ -33,6 +33,101 @@
   let compileGeneration = 0;
   /** `buffer` is only a safe preview overlay when it matches the open tab (see EditorPane onReady). */
   let editorBufferPath = $state<string | null>(null);
+
+  const PREVIEW_WIDTH_STORAGE = "paperdesk.previewWidthPx";
+  const SIDEBAR_W = 220;
+  const SPLITTER_W = 6;
+  const MIN_PREVIEW_W = 200;
+  const MIN_EDITOR_W = 200;
+
+  let mainEl = $state<HTMLDivElement | null>(null);
+  let previewWidthPx = $state(360);
+  /** Bumped on window resize so aria / max width stay in sync with the grid. */
+  let layoutMeasure = $state(0);
+
+  let mainGridColumns = $derived(
+    `${SIDEBAR_W}px minmax(0, 1fr) ${SPLITTER_W}px ${previewWidthPx}px`,
+  );
+
+  const previewWidthMaxPx = $derived.by(() => {
+    void layoutMeasure;
+    if (!mainEl) return 800;
+    const total = mainEl.getBoundingClientRect().width;
+    return Math.max(
+      MIN_PREVIEW_W,
+      Math.floor(total - SIDEBAR_W - SPLITTER_W - MIN_EDITOR_W),
+    );
+  });
+
+  function defaultPreviewWidth(): number {
+    if (typeof window === "undefined") return 360;
+    return Math.round(
+      Math.min(560, Math.max(240, window.innerWidth * 0.38)),
+    );
+  }
+
+  function clampPreviewWidth(next: number): number {
+    const max = mainEl
+      ? Math.floor(
+          mainEl.getBoundingClientRect().width -
+            SIDEBAR_W -
+            SPLITTER_W -
+            MIN_EDITOR_W,
+        )
+      : 560;
+    return Math.round(
+      Math.max(MIN_PREVIEW_W, Math.min(Math.max(MIN_PREVIEW_W, max), next)),
+    );
+  }
+
+  let splitDragStartX = 0;
+  let splitDragStartW = 0;
+
+  function onSplitPointerDown(e: PointerEvent) {
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    splitDragStartX = e.clientX;
+    splitDragStartW = previewWidthPx;
+    e.preventDefault();
+  }
+
+  function onSplitPointerMove(e: PointerEvent) {
+    if (!(e.currentTarget as HTMLElement).hasPointerCapture(e.pointerId)) return;
+    const dx = e.clientX - splitDragStartX;
+    previewWidthPx = clampPreviewWidth(splitDragStartW - dx);
+  }
+
+  function onSplitPointerUp(e: PointerEvent) {
+    const el = e.currentTarget as HTMLElement;
+    if (el.hasPointerCapture(e.pointerId)) {
+      el.releasePointerCapture(e.pointerId);
+    }
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem(PREVIEW_WIDTH_STORAGE, String(previewWidthPx));
+    }
+  }
+
+  onMount(() => {
+    if (typeof localStorage !== "undefined") {
+      const raw = localStorage.getItem(PREVIEW_WIDTH_STORAGE);
+      if (raw) {
+        const n = Number(raw);
+        if (Number.isFinite(n) && n >= MIN_PREVIEW_W && n <= 2000) {
+          previewWidthPx = n;
+        }
+      } else {
+        previewWidthPx = defaultPreviewWidth();
+      }
+    }
+    const onResize = () => {
+      layoutMeasure += 1;
+      previewWidthPx = clampPreviewWidth(previewWidthPx);
+    };
+    window.addEventListener("resize", onResize);
+    void tick().then(() => {
+      previewWidthPx = clampPreviewWidth(previewWidthPx);
+    });
+    return () => window.removeEventListener("resize", onResize);
+  });
 
   async function refreshFiles() {
     try {
@@ -242,7 +337,11 @@
     <button type="button" class="action" onclick={doExport}>Export PDF</button>
   </header>
 
-  <div class="main">
+  <div
+    class="main"
+    bind:this={mainEl}
+    style:grid-template-columns={mainGridColumns}
+  >
     <aside class="side">
       <FileTree {files} {selectedPath} onSelect={selectFile} />
     </aside>
@@ -261,6 +360,19 @@
       />
       <DiagnosticsPanel {diagnostics} />
     </section>
+    <div
+      class="splitter"
+      role="separator"
+      aria-orientation="vertical"
+      aria-valuenow={previewWidthPx}
+      aria-valuemin={MIN_PREVIEW_W}
+      aria-valuemax={previewWidthMaxPx}
+      aria-label="Breite der Vorschau anpassen"
+      onpointerdown={onSplitPointerDown}
+      onpointermove={onSplitPointerMove}
+      onpointerup={onSplitPointerUp}
+      onpointercancel={onSplitPointerUp}
+    ></div>
     <aside class="preview-col">
       <PreviewPane pdfUrl={pdfUrl} page={previewPage} />
     </aside>
@@ -357,9 +469,24 @@
   .main {
     flex: 1;
     display: grid;
-    grid-template-columns: 220px minmax(0, 1fr) minmax(240px, 38vw);
     grid-template-rows: minmax(0, 1fr);
     min-height: 0;
+  }
+
+  .splitter {
+    grid-column: 3;
+    grid-row: 1;
+    width: 100%;
+    min-height: 0;
+    touch-action: none;
+    user-select: none;
+    cursor: col-resize;
+    background: var(--pd-border);
+    z-index: 2;
+  }
+
+  .splitter:hover {
+    background: var(--pd-muted);
   }
 
   .side {
