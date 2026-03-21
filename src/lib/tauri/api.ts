@@ -119,7 +119,7 @@ export async function writeBinaryFile(
   return invoke("write_binary_file", { relativePath, contentBase64 });
 }
 
-/** System clipboard via Rust (Linux-friendly): image → `assets/paste-*.png`, else plain text. */
+/** System clipboard via Rust (Linux-friendly): image → `assets/image-<local-timestamp>.png`, else plain text. */
 export type ClipboardPasteForTypstResult =
   | { kind: "none" }
   | { kind: "text"; content: string }

@@ -2,9 +2,9 @@ use std::fs;
 use std::io::Cursor;
 
 use arboard::Clipboard;
+use chrono::Local;
 use image::{ImageBuffer, ImageFormat, Rgba};
 use serde::Serialize;
-use uuid::Uuid;
 
 use crate::project::history;
 use crate::project::paths::join_under_root;
@@ -21,7 +21,7 @@ pub enum ClipboardPasteForTypstResult {
     Image { relative_path: String },
 }
 
-/// Reads the system clipboard: saves a bitmap as `assets/paste-<uuid>.png` or returns plain text.
+/// Reads the system clipboard: saves a bitmap as `assets/image-<local-timestamp>.png` or returns plain text.
 #[tauri::command]
 pub fn clipboard_paste_for_typst(
     state: tauri::State<'_, AppState>,
@@ -51,7 +51,12 @@ pub fn clipboard_paste_for_typst(
             .write_to(&mut Cursor::new(&mut png_bytes), ImageFormat::Png)
             .map_err(|e| format!("png encode: {e}"))?;
 
-        let name = format!("paste-{}.png", Uuid::new_v4());
+        let now = Local::now();
+        let name = format!(
+            "image-{}-{:03}.png",
+            now.format("%Y%m%d-%H%M%S"),
+            now.timestamp_subsec_millis()
+        );
         let relative_path = format!("assets/{name}");
 
         let guard = state.project_root.lock().map_err(|e| e.to_string())?;

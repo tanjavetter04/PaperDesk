@@ -162,6 +162,14 @@
     return "png";
   }
 
+  /** Local wall-clock stamp; same pattern as Rust `clipboard_paste_for_typst` (`image-YYYYMMDD-HHMMSS-mmm`). */
+  function pastedImageTimestampedName(ext: string): string {
+    const d = new Date();
+    const pad = (n: number, w = 2) => String(n).padStart(w, "0");
+    const stamp = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}-${pad(d.getMilliseconds(), 3)}`;
+    return `image-${stamp}.${ext}`;
+  }
+
   /** Path from the current file’s directory to another project-relative POSIX path. */
   function posixRelativePath(fromFileRel: string, toProjectRel: string): string {
     const slash = fromFileRel.lastIndexOf("/");
@@ -288,7 +296,7 @@
       if (!ep || !mode) return;
       const mime = (file.type || "image/png").toLowerCase();
       const ext = mimeToImageExt(mime);
-      const name = `paste-${crypto.randomUUID()}.${ext}`;
+      const name = pastedImageTimestampedName(ext);
       const relProject = `assets/${name}`;
       let bytes: Uint8Array;
       try {

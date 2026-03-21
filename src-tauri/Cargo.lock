@@ -3475,7 +3475,6 @@ dependencies = [
  "typst-pdf",
  "typst-timing",
  "ureq",
- "uuid",
  "zip",
 ]
 
