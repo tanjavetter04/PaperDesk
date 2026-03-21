@@ -7,6 +7,28 @@
   } from "$lib/history/parsePatch";
   import { locale, t } from "$lib/i18n/locale.svelte";
 
+  const HISTORY_PANEL_W_KEY = "paperdesk.historyPanelWidthPx";
+  const HISTORY_PANEL_MIN = 280;
+  const HISTORY_PANEL_MAX = 960;
+  const HISTORY_PANEL_DEFAULT = 440;
+
+  function readStoredPanelWidth(): number {
+    if (typeof localStorage === "undefined") return HISTORY_PANEL_DEFAULT;
+    const n = Number(localStorage.getItem(HISTORY_PANEL_W_KEY));
+    return Number.isFinite(n) && n >= HISTORY_PANEL_MIN && n <= HISTORY_PANEL_MAX
+      ? n
+      : HISTORY_PANEL_DEFAULT;
+  }
+
+  function clampPanelW(w: number): number {
+    const maxV =
+      typeof window !== "undefined"
+        ? Math.max(HISTORY_PANEL_MIN, window.innerWidth - 32)
+        : HISTORY_PANEL_MAX;
+    const cap = Math.min(HISTORY_PANEL_MAX, maxV);
+    return Math.min(cap, Math.max(HISTORY_PANEL_MIN, Math.round(w)));
+  }
+
   let {
     open,
     commits,
@@ -38,6 +60,54 @@
     onCloseDiff: () => void;
     onRestore: (commitId: string) => void;
   } = $props();
+
+  let panelWidthPx = $state(
+    typeof window !== "undefined" ? clampPanelW(readStoredPanelWidth()) : HISTORY_PANEL_DEFAULT,
+  );
+  let resizing = $state(false);
+
+  $effect(() => {
+    if (typeof window === "undefined") return;
+    function onWinResize() {
+      panelWidthPx = clampPanelW(panelWidthPx);
+    }
+    window.addEventListener("resize", onWinResize);
+    return () => window.removeEventListener("resize", onWinResize);
+  });
+
+  function onResizePointerDown(e: PointerEvent) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const el = e.currentTarget as HTMLElement;
+    const startX = e.clientX;
+    const startW = panelWidthPx;
+    resizing = true;
+    el.setPointerCapture(e.pointerId);
+
+    function onMove(ev: PointerEvent) {
+      const dx = ev.clientX - startX;
+      panelWidthPx = clampPanelW(startW - dx);
+    }
+
+    function onUp() {
+      resizing = false;
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+      if (typeof localStorage !== "undefined") {
+        localStorage.setItem(HISTORY_PANEL_W_KEY, String(panelWidthPx));
+      }
+      try {
+        el.releasePointerCapture(e.pointerId);
+      } catch {
+        /* released */
+      }
+    }
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+  }
 
   function formatTime(unix: number): string {
     try {
@@ -108,7 +178,21 @@
     onclick={(e) => e.target === e.currentTarget && onClose()}
   ></div>
   {#key locale.value}
-    <div class="panel" role="dialog" aria-modal="true" aria-labelledby="hist-title">
+    <div
+      class="panel"
+      class:resizing
+      style:--panel-w="{panelWidthPx}px"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="hist-title"
+    >
+      <div
+        class="resize-edge"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label={t("history.resizePanel")}
+        onpointerdown={onResizePointerDown}
+      ></div>
       <div class="head">
         <div class="head-titles">
           <h2 id="hist-title">{t("history.title")}</h2>
@@ -281,7 +365,9 @@
     right: 1rem;
     top: 4rem;
     bottom: 1rem;
-    width: min(440px, calc(100vw - 2rem));
+    left: auto;
+    width: min(var(--panel-w, 440px), calc(100vw - 2rem));
+    min-width: min(240px, calc(100vw - 2rem));
     z-index: 115;
     display: flex;
     flex-direction: column;
@@ -291,6 +377,27 @@
     color: var(--pd-text);
     box-shadow: 0 12px 40px rgb(0 0 0 / 0.35);
     min-height: 0;
+  }
+
+  .panel.resizing {
+    user-select: none;
+  }
+
+  .resize-edge {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 8px;
+    z-index: 3;
+    cursor: ew-resize;
+    touch-action: none;
+    border-radius: 10px 0 0 10px;
+  }
+
+  .resize-edge:hover,
+  .panel.resizing .resize-edge {
+    background: color-mix(in srgb, var(--pd-accent, var(--pd-text)) 14%, transparent);
   }
 
   .head {
