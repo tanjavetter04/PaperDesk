@@ -9,6 +9,7 @@
     createEmptyProject,
   } from "$lib/tauri/api";
   import RecentProjectRow from "$lib/components/RecentProjectRow.svelte";
+  import { appSettings } from "$lib/appSettings.svelte";
   import { t } from "$lib/i18n/locale.svelte";
   import { openSettingsModal } from "$lib/settingsModal.svelte";
 
@@ -97,7 +98,9 @@
     error = null;
     busy = true;
     try {
-      const p = await pickProjectFolder(t("dialog.projectFolder"));
+      const p = await pickProjectFolder(t("dialog.projectFolder"), {
+        defaultPath: appSettings.defaultProjectDir.trim() || undefined,
+      });
       if (!p) return;
       await openProject(p);
       await goto("/project");
@@ -125,7 +128,9 @@
     error = null;
     busy = true;
     try {
-      const p = await pickProjectFolder(t("dialog.projectFolder"));
+      const p = await pickProjectFolder(t("dialog.projectFolder"), {
+        defaultPath: appSettings.defaultProjectDir.trim() || undefined,
+      });
       if (!p) return;
       await createFromTemplate("thesis", p);
       await goto("/project");
@@ -140,7 +145,9 @@
     error = null;
     busy = true;
     try {
-      const p = await pickProjectFolder(t("dialog.projectFolder"));
+      const p = await pickProjectFolder(t("dialog.projectFolder"), {
+        defaultPath: appSettings.defaultProjectDir.trim() || undefined,
+      });
       if (!p) return;
       await createEmptyProject(p);
       await goto("/project");

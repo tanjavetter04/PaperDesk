@@ -43,14 +43,22 @@ export async function closeProject(): Promise<void> {
   return invoke("close_project");
 }
 
+export type PickProjectFolderOptions = {
+  /** Initial directory shown in the dialog (desktop). */
+  defaultPath?: string;
+};
+
 /** Folder picker via JS plugin (avoids GTK/WebView deadlocks from Rust `blocking_pick_*`). */
 export async function pickProjectFolder(
   title = "Project folder",
+  options?: PickProjectFolderOptions,
 ): Promise<string | null> {
+  const trimmed = options?.defaultPath?.trim();
   return open({
     directory: true,
     multiple: false,
     title,
+    ...(trimmed ? { defaultPath: trimmed } : {}),
   });
 }
 

@@ -6,6 +6,7 @@
   import "@fontsource/ibm-plex-mono/400.css";
   import "@fontsource/ibm-plex-mono/500.css";
   import "../app.css";
+  import "$lib/appSettings.svelte";
   import SettingsModal from "$lib/components/SettingsModal.svelte";
   import { closeSettingsModal, settingsModal } from "$lib/settingsModal.svelte";
   import { locale, t } from "$lib/i18n/locale.svelte";
