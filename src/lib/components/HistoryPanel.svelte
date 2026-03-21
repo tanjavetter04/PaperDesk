@@ -5,6 +5,7 @@
     parseGitPatch,
     type DiffViewLine,
   } from "$lib/history/parsePatch";
+  import { locale, t } from "$lib/i18n/locale.svelte";
 
   let {
     open,
@@ -49,11 +50,17 @@
   const parsedDiff = $derived(parseGitPatch(diffText || ""));
   const diffFileCount = $derived(parsedDiff.files.length);
 
-  function diffScopeLabel(n: number): string {
-    if (n <= 0) return "Keine Dateien";
-    if (n === 1) return "1 geänderte Datei";
-    return `${n} geänderte Dateien`;
-  }
+  const diffSubtitleLine = $derived.by(() => {
+    void locale.value;
+    const n = diffFileCount;
+    const scope =
+      n <= 0
+        ? t("history.diffFilesNone")
+        : n === 1
+          ? t("history.diffFilesOne")
+          : t("history.diffFilesOther", { n });
+    return t("history.diffSubtitle", { scope });
+  });
 
   function gutterChar(line: DiffViewLine): string {
     switch (line.kind) {
@@ -100,40 +107,47 @@
     role="presentation"
     onclick={(e) => e.target === e.currentTarget && onClose()}
   ></div>
-  <div class="panel" role="dialog" aria-modal="true" aria-labelledby="hist-title">
-    <div class="head">
-      <div class="head-titles">
-        <h2 id="hist-title">Verlauf</h2>
-        {#if historyRefExists && tipShort}
-          <p class="tip-line">
-            Aktueller Tip <code class="tip-hash">{tipShort}</code>
-          </p>
-        {:else if !historyRefExists}
-          <p class="tip-line muted-tip">Noch kein Checkpoint (Tip) vorhanden.</p>
-        {/if}
+  {#key locale.value}
+    <div class="panel" role="dialog" aria-modal="true" aria-labelledby="hist-title">
+      <div class="head">
+        <div class="head-titles">
+          <h2 id="hist-title">{t("history.title")}</h2>
+          {#if historyRefExists && tipShort}
+            <p class="tip-line">
+              {t("history.currentTip")}{" "}
+              <code class="tip-hash">{tipShort}</code>
+            </p>
+          {:else if !historyRefExists}
+            <p class="tip-line muted-tip">{t("history.noTipYet")}</p>
+          {/if}
+        </div>
+        <div class="head-actions">
+          <button type="button" class="ghost" disabled={busy} onclick={onSnapshot}
+            >{t("history.checkpoint")}</button
+          >
+          <button type="button" class="ghost" disabled={busy} onclick={onRefresh}
+            >{t("history.refresh")}</button
+          >
+          <button type="button" class="ghost" onclick={onClose}>{t("settings.close")}</button>
+        </div>
       </div>
-      <div class="head-actions">
-        <button type="button" class="ghost" disabled={busy} onclick={onSnapshot}>Checkpoint</button>
-        <button type="button" class="ghost" disabled={busy} onclick={onRefresh}>Aktualisieren</button>
-        <button type="button" class="ghost" onclick={onClose}>Schließen</button>
-      </div>
-    </div>
-    {#if refreshing}
-      <div class="refresh-bar" role="status" aria-live="polite">Aktualisieren…</div>
-    {/if}
-    <p class="hint">
-      Checkpoints werden unter <code>refs/paperdesk/history</code> gespeichert und ändern deinen
-      normalen Git-<code>HEAD</code> nicht.
-    </p>
-    <div class="list-wrap">
-      {#if busy && commits.length === 0}
-        <p class="muted">Laden…</p>
-      {:else if commits.length === 0}
-        <p class="muted">Noch keine Checkpoints.</p>
-      {:else}
-        <ul class="timeline" aria-busy={busy}>
-          {#each commits as c, i (c.id)}
-            {@const display = checkpointDisplayLabel(c.message)}
+      {#if refreshing}
+        <div class="refresh-bar" role="status" aria-live="polite">{t("history.refreshing")}</div>
+      {/if}
+      <p class="hint">
+        {t("history.hintIntro")}
+        <code>refs/paperdesk/history</code>
+        {t("history.hintMid")}<code>HEAD</code>{t("history.hintOutro")}
+      </p>
+      <div class="list-wrap">
+        {#if busy && commits.length === 0}
+          <p class="muted">{t("history.loading")}</p>
+        {:else if commits.length === 0}
+          <p class="muted">{t("history.empty")}</p>
+        {:else}
+          <ul class="timeline" aria-busy={busy}>
+            {#each commits as c, i (c.id)}
+              {@const display = checkpointDisplayLabel(c.message, t)}
             <li class="tl-item">
               <div class="tl-rail" aria-hidden="true">
                 <span class="tl-dot"></span>
@@ -153,18 +167,21 @@
                   <p class="tl-msg">{c.message}</p>
                 {/if}
                 <div class="tl-actions">
-                  <button type="button" class="mini" onclick={() => onRequestDiff(c.id)}>Diff</button>
+                  <button type="button" class="mini" onclick={() => onRequestDiff(c.id)}
+                    >{t("history.diff")}</button
+                  >
                   <button type="button" class="mini danger" onclick={() => onRestore(c.id)}
-                    >Wiederherstellen</button
+                    >{t("history.restore")}</button
                   >
                 </div>
               </article>
             </li>
           {/each}
         </ul>
-      {/if}
+        {/if}
+      </div>
     </div>
-  </div>
+  {/key}
 {/if}
 
 {#if diffOpen}
@@ -173,47 +190,48 @@
     role="presentation"
     onclick={(e) => e.target === e.currentTarget && onCloseDiff()}
   ></div>
-  <div class="diff-modal" role="dialog" aria-modal="true" aria-labelledby="diff-title">
-    <div class="diff-head">
-      <div class="diff-head-main">
-        <h2 id="diff-title">Änderungen</h2>
-        <p class="diff-subtitle">
-          Checkpoint → Arbeitsverzeichnis · {diffScopeLabel(diffFileCount)}
-        </p>
+  {#key locale.value}
+    <div class="diff-modal" role="dialog" aria-modal="true" aria-labelledby="diff-title">
+      <div class="diff-head">
+        <div class="diff-head-main">
+          <h2 id="diff-title">{t("history.changes")}</h2>
+          <p class="diff-subtitle">
+            {diffSubtitleLine}
+          </p>
+        </div>
+        <div class="diff-head-actions">
+          <button
+            type="button"
+            class="diff-close"
+            onclick={onCloseDiff}
+            aria-label={t("history.closeDiffAria")}
+          >
+            {t("settings.close")}
+          </button>
+        </div>
       </div>
-      <div class="diff-head-actions">
-        <button
-          type="button"
-          class="diff-close"
-          onclick={onCloseDiff}
-          aria-label="Diff schließen"
-        >
-          Schließen
-        </button>
-      </div>
-    </div>
-    {#if parsedDiff.truncated}
-      <div class="diff-truncation" role="status">
-        Ausgabe wurde gekürzt (sehr großer Diff). Vollständigen Stand ggf. per Wiederherstellen prüfen.
-      </div>
-    {/if}
-    <div class="diff-body">
-      {#if parsedDiff.preamble && !parsedDiff.files.length}
-        <pre class="diff-fallback">{diffText || "(leer)"}</pre>
-      {:else if parsedDiff.preamble}
-        <pre class="diff-preamble">{parsedDiff.preamble}</pre>
+      {#if parsedDiff.truncated}
+        <div class="diff-truncation" role="status">
+          {t("history.diffTruncation")}
+        </div>
       {/if}
-      {#if parsedDiff.files.length === 0 && !parsedDiff.preamble}
-        <p class="diff-empty">(keine Änderungen)</p>
-      {:else}
-        {#each parsedDiff.files as file (file.headerLine)}
-          <section class="diff-file">
-            <header class="diff-file-head">
-              <span class="diff-file-path" title={file.path}>{file.path}</span>
-            </header>
-            {#if file.metaBeforeHunks.length > 0}
-              <details class="diff-meta">
-                <summary>Technische Details (index, Pfade)</summary>
+      <div class="diff-body">
+        {#if parsedDiff.preamble && !parsedDiff.files.length}
+          <pre class="diff-fallback">{diffText || t("history.diffEmpty")}</pre>
+        {:else if parsedDiff.preamble}
+          <pre class="diff-preamble">{parsedDiff.preamble}</pre>
+        {/if}
+        {#if parsedDiff.files.length === 0 && !parsedDiff.preamble}
+          <p class="diff-empty">{t("history.diffNoChanges")}</p>
+        {:else}
+          {#each parsedDiff.files as file (file.headerLine)}
+            <section class="diff-file">
+              <header class="diff-file-head">
+                <span class="diff-file-path" title={file.path}>{file.path}</span>
+              </header>
+              {#if file.metaBeforeHunks.length > 0}
+                <details class="diff-meta">
+                  <summary>{t("history.diffMetaSummary")}</summary>
                 <div class="diff-meta-inner">
                   {#each file.metaBeforeHunks as line (line.raw)}
                     <div class={lineClass(line)}>
@@ -240,9 +258,10 @@
             {/each}
           </section>
         {/each}
-      {/if}
+        {/if}
+      </div>
     </div>
-  </div>
+  {/key}
 {/if}
 
 <style>

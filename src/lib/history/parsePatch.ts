@@ -1,3 +1,5 @@
+import type { MessageKey } from "$lib/i18n/messages";
+
 /** Parse a unified patch string (e.g. from git2 DiffFormat::Patch) for structured UI. */
 
 export type DiffLineKind = "add" | "del" | "ctx" | "meta" | "hunk";
@@ -148,28 +150,32 @@ export function parseGitPatch(patch: string): ParsedPatch {
   return { files, truncated, preamble };
 }
 
-const REASON_LABELS: Record<string, string> = {
-  idle: "Pause",
-  manual: "Manuell",
-  "manual-save": "Speichern",
-  "new-file": "Neue Datei",
-  "new folder": "Neuer Ordner",
-  export: "Export",
-  compile: "Kompilieren",
-  hub: "Projekt verlassen",
-  close: "Schließen",
-  "move/rename": "Verschieben/Umbenennen",
+const REASON_TO_KEY: Partial<Record<string, MessageKey>> = {
+  idle: "history.reason.idle",
+  manual: "history.reason.manual",
+  "manual-save": "history.reason.manualSave",
+  "new-file": "history.reason.newFile",
+  "new folder": "history.reason.newFolder",
+  export: "history.reason.export",
+  compile: "history.reason.compile",
+  hub: "history.reason.hub",
+  close: "history.reason.close",
+  "move/rename": "history.reason.moveRename",
 };
 
 /**
  * Human-readable label for `paperdesk: …` checkpoint messages (handles accidental double prefix).
  */
-export function checkpointDisplayLabel(message: string): { label: string; raw: string } {
+export function checkpointDisplayLabel(
+  message: string,
+  t: (key: MessageKey) => string,
+): { label: string; raw: string } {
   const raw = message.trim();
   let rest = raw;
   while (/^paperdesk:\s*/i.test(rest)) {
     rest = rest.replace(/^paperdesk:\s*/i, "").trim();
   }
-  const label = REASON_LABELS[rest] ?? (rest || "Checkpoint");
+  const key = REASON_TO_KEY[rest];
+  const label = key ? t(key) : rest || t("history.reason.default");
   return { label, raw };
 }

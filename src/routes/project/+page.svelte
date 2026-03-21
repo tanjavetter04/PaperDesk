@@ -549,9 +549,7 @@
     clearHistoryIdleTimer();
     await syncHistoryStatus(false);
     if (!historyActive) {
-      showMessage(
-        "Projekt-Verlauf ist nicht aktiv (oder ohne vorhandenes Git nicht freigegeben).",
-      );
+      showMessage(t("history.inactiveToast"));
       return;
     }
     historyPanelOpen = true;
@@ -1034,7 +1032,7 @@
     </span>
     <span class="spacer"></span>
     <button type="button" class="action" onclick={() => void openHistoryPanel()}>
-      History
+      {t("history.toolbar")}
     </button>
     <button type="button" class="action" onclick={compileNow}>
       {t("project.compile")}
@@ -1170,30 +1168,30 @@
 
   <ConfirmModal
     open={historyPromptEnableOpen}
-    title="Projekt-Verlauf"
-    message={`Git-basierte Änderungshistorie für dieses Projekt aktivieren?\n\nCheckpoints landen unter refs/paperdesk/history und ändern deinen Git-HEAD nicht.`}
-    confirmLabel="Aktivieren"
-    cancelLabel="Nicht jetzt"
+    title={t("history.promptEnableTitle")}
+    message={t("history.promptEnableMessage")}
+    confirmLabel={t("history.promptEnableConfirm")}
+    cancelLabel={t("history.promptEnableCancel")}
     onConfirm={() => void onHistoryEnableYes()}
     onCancel={() => void onHistoryEnableNo()}
   />
 
   <ConfirmModal
     open={historyPromptExistingOpen}
-    title="Vorhandenes Git-Repository"
-    message="In diesem Ordner gibt es bereits ein .git-Verzeichnis. Soll PaperDesk die Historie dort speichern (empfohlen)?\n\n„Nein“ deaktiviert den Verlauf für dieses Projekt."
-    confirmLabel="Ja, nutzen"
-    cancelLabel="Nein"
+    title={t("history.promptExistingTitle")}
+    message={t("history.promptExistingMessage")}
+    confirmLabel={t("history.promptExistingConfirm")}
+    cancelLabel={t("history.promptExistingCancel")}
     onConfirm={() => void onHistoryExistingYes()}
     onCancel={() => void onHistoryExistingNo()}
   />
 
   <ConfirmModal
     open={historyRestoreCommitId !== null}
-    title="Stand wiederherstellen?"
-    message="Der ausgewählte Checkpoint wird in das Arbeitsverzeichnis geschrieben (bestehende Dateien werden überschrieben). Fortfahren?"
-    confirmLabel="Wiederherstellen"
-    cancelLabel="Abbrechen"
+    title={t("history.restoreTitle")}
+    message={t("history.restoreMessage")}
+    confirmLabel={t("history.restoreConfirm")}
+    cancelLabel={t("common.cancel")}
     onConfirm={() => void confirmHistoryRestore()}
     onCancel={() => (historyRestoreCommitId = null)}
   />
