@@ -100,13 +100,13 @@
 
   .modal h2 {
     margin: 0 0 0.5rem;
-    font-size: 0.95rem;
+    font-size: 1rem;
     font-weight: 600;
   }
 
   .hint {
     margin: 0 0 0.65rem;
-    font-size: 0.78rem;
+    font-size: 1rem;
     color: var(--pd-muted);
     line-height: 1.35;
   }
@@ -120,7 +120,7 @@
     border: 1px solid var(--pd-border);
     background: var(--pd-bg);
     color: var(--pd-text);
-    font-size: 0.85rem;
+    font-size: 1rem;
     font-family: var(--pd-mono);
   }
 
@@ -141,7 +141,7 @@
     background: transparent;
     color: var(--pd-muted);
     cursor: pointer;
-    font-size: 0.82rem;
+    font-size: 1rem;
   }
 
   .ghost:hover {
@@ -155,7 +155,7 @@
     background: color-mix(in srgb, var(--pd-accent) 18%, var(--pd-bg));
     color: var(--pd-text);
     cursor: pointer;
-    font-size: 0.82rem;
+    font-size: 1rem;
   }
 
   .primary:hover {

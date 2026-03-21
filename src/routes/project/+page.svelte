@@ -160,26 +160,28 @@
     previewWidthPx = clampPreviewWidth(splitDragStartW - dx);
   }
 
-  function onSplitPointerUp(e: PointerEvent) {
-    const el = e.currentTarget as HTMLElement;
-    if (el.hasPointerCapture(e.pointerId)) {
-      el.releasePointerCapture(e.pointerId);
-    }
+  function finishPreviewSplitDrag() {
     splitDragging = false;
     if (typeof localStorage !== "undefined") {
       localStorage.setItem(PREVIEW_WIDTH_STORAGE, String(previewWidthPx));
     }
   }
 
+  function onSplitPointerUp(e: PointerEvent) {
+    const el = e.currentTarget as HTMLElement;
+    if (el.hasPointerCapture(e.pointerId)) {
+      el.releasePointerCapture(e.pointerId);
+    }
+    finishPreviewSplitDrag();
+  }
+
   let sidebarSplitDragStartX = 0;
   let sidebarSplitDragStartW = 0;
-  let sidebarSplitDragging = $state(false);
 
   function onSidebarSplitPointerDown(e: PointerEvent) {
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     sidebarSplitDragStartX = e.clientX;
     sidebarSplitDragStartW = sidebarWidthPx;
-    sidebarSplitDragging = true;
     e.preventDefault();
   }
 
@@ -189,15 +191,22 @@
     sidebarWidthPx = clampSidebarWidth(sidebarSplitDragStartW + dx);
   }
 
+  function finishSidebarSplitDrag() {
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem(SIDEBAR_WIDTH_STORAGE, String(sidebarWidthPx));
+    }
+  }
+
   function onSidebarSplitPointerUp(e: PointerEvent) {
     const el = e.currentTarget as HTMLElement;
     if (el.hasPointerCapture(e.pointerId)) {
       el.releasePointerCapture(e.pointerId);
     }
-    sidebarSplitDragging = false;
-    if (typeof localStorage !== "undefined") {
-      localStorage.setItem(SIDEBAR_WIDTH_STORAGE, String(sidebarWidthPx));
-    }
+    finishSidebarSplitDrag();
+  }
+
+  function clearPreviewSplitIfStuck() {
+    if (splitDragging) finishPreviewSplitDrag();
   }
 
   function pathUnderProjectRoot(absPath: string, root: string): string | null {
@@ -263,7 +272,12 @@
       sidebarWidthPx = clampSidebarWidth(sidebarWidthPx);
       previewWidthPx = clampPreviewWidth(previewWidthPx);
     };
+    const onVisibilityForSplit = () => {
+      if (document.visibilityState === "hidden") clearPreviewSplitIfStuck();
+    };
     window.addEventListener("resize", onResize);
+    window.addEventListener("blur", clearPreviewSplitIfStuck);
+    document.addEventListener("visibilitychange", onVisibilityForSplit);
     void tick().then(() => {
       previewWidthPx = clampPreviewWidth(previewWidthPx);
       sidebarWidthPx = clampSidebarWidth(sidebarWidthPx);
@@ -288,6 +302,8 @@
 
     return () => {
       window.removeEventListener("resize", onResize);
+      window.removeEventListener("blur", clearPreviewSplitIfStuck);
+      document.removeEventListener("visibilitychange", onVisibilityForSplit);
       unlistenPreview?.();
       editorHostCommands.save = () => {};
       editorHostCommands.compile = () => {};
@@ -690,11 +706,7 @@
   </header>
 
   <div class="main" bind:this={mainEl}>
-    <aside
-      class="side"
-      class:side--split-drag={sidebarSplitDragging}
-      style:width={`${sidebarWidthPx}px`}
-    >
+    <aside class="side" style:width={`${sidebarWidthPx}px`}>
       <FileTree
         entries={projectEntries}
         selectedFilePath={selectedPath}
@@ -720,6 +732,7 @@
       onpointermove={onSidebarSplitPointerMove}
       onpointerup={onSidebarSplitPointerUp}
       onpointercancel={onSidebarSplitPointerUp}
+      onlostpointercapture={onSidebarSplitPointerUp}
     ></div>
     <section class="center">
       <EditorPane
@@ -745,6 +758,7 @@
       onpointermove={onSplitPointerMove}
       onpointerup={onSplitPointerUp}
       onpointercancel={onSplitPointerUp}
+      onlostpointercapture={onSplitPointerUp}
     ></div>
     <aside
       class="preview-col"
@@ -789,6 +803,8 @@
   }
 
   .bar {
+    position: relative;
+    z-index: 5;
     display: flex;
     align-items: center;
     gap: 0.65rem;
@@ -802,7 +818,7 @@
     border: none;
     background: transparent;
     color: var(--pd-muted);
-    font-size: 0.85rem;
+    font-size: 1rem;
     padding: 0.35rem 0.5rem;
   }
 
@@ -811,7 +827,7 @@
   }
 
   .proj {
-    font-size: 0.78rem;
+    font-size: 1rem;
     color: var(--pd-muted);
     max-width: 28vw;
     overflow: hidden;
@@ -825,7 +841,7 @@
   }
 
   .pill {
-    font-size: 0.68rem;
+    font-size: 1rem;
     text-transform: uppercase;
     letter-spacing: 0.05em;
     padding: 0.2rem 0.45rem;
@@ -864,7 +880,7 @@
     border: 1px solid var(--pd-border);
     background: var(--pd-bg);
     color: var(--pd-text);
-    font-size: 0.82rem;
+    font-size: 1rem;
   }
 
   .action:hover {
@@ -902,10 +918,6 @@
     overflow: hidden;
     display: flex;
     flex-direction: column;
-  }
-
-  .side.side--split-drag :global(*) {
-    pointer-events: none;
   }
 
   .center {

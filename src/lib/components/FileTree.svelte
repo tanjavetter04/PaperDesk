@@ -277,7 +277,7 @@
     justify-content: space-between;
     gap: 0.35rem;
     padding: 0.5rem 0.65rem;
-    font-size: 0.75rem;
+    font-size: 1rem;
     text-transform: uppercase;
     letter-spacing: 0.06em;
     color: var(--pd-muted);
@@ -304,7 +304,7 @@
     border: 1px solid var(--pd-border);
     background: var(--pd-bg);
     color: var(--pd-text);
-    font-size: 0.95rem;
+    font-size: 1rem;
     line-height: 1;
     cursor: pointer;
   }
@@ -342,7 +342,7 @@
   }
 
   .target-hint {
-    font-size: 0.68rem;
+    font-size: 1rem;
     color: var(--pd-muted);
     padding: 0.35rem 0.75rem 0.25rem;
     border-bottom: 1px solid color-mix(in srgb, var(--pd-border) 55%, transparent);
@@ -350,7 +350,7 @@
 
   .target-hint code {
     font-family: var(--pd-mono);
-    font-size: 0.66rem;
+    font-size: 1em;
     color: var(--pd-text);
   }
 
@@ -385,7 +385,7 @@
     border-radius: 5px;
     background: transparent;
     color: var(--pd-text);
-    font-size: 0.82rem;
+    font-size: 1rem;
     font-family: var(--pd-mono);
     cursor: pointer;
   }
@@ -442,7 +442,6 @@
   .folder-name {
     font-weight: 600;
     font-family: var(--pd-font), system-ui, sans-serif;
-    font-size: 0.8rem;
     letter-spacing: 0.02em;
   }
 
@@ -454,7 +453,7 @@
     flex-shrink: 0;
     width: 0.85rem;
     display: inline-block;
-    font-size: 0.65rem;
+    font-size: 1rem;
     color: var(--pd-muted);
     transition: transform 0.12s ease;
   }
@@ -498,13 +497,13 @@
 
   .modal h2 {
     margin: 0 0 0.35rem;
-    font-size: 0.95rem;
+    font-size: 1rem;
     font-weight: 600;
   }
 
   .modal-sub {
     margin: 0 0 0.75rem;
-    font-size: 0.78rem;
+    font-size: 1rem;
     color: var(--pd-muted);
     word-break: break-all;
   }
@@ -513,7 +512,7 @@
     display: flex;
     flex-direction: column;
     gap: 0.35rem;
-    font-size: 0.78rem;
+    font-size: 1rem;
     color: var(--pd-muted);
     margin-bottom: 0.85rem;
   }
@@ -525,7 +524,7 @@
     border: 1px solid var(--pd-border);
     background-color: var(--pd-bg);
     color: var(--pd-text);
-    font-size: 0.82rem;
+    font-size: 1rem;
     font-family: var(--pd-font), system-ui, sans-serif;
     color-scheme: dark;
     accent-color: var(--pd-accent);
@@ -559,7 +558,7 @@
     background: transparent;
     color: var(--pd-muted);
     cursor: pointer;
-    font-size: 0.82rem;
+    font-size: 1rem;
   }
 
   .modal-btns .ghost:hover {
@@ -573,7 +572,7 @@
     background: color-mix(in srgb, var(--pd-accent) 18%, var(--pd-bg));
     color: var(--pd-text);
     cursor: pointer;
-    font-size: 0.82rem;
+    font-size: 1rem;
   }
 
   .modal-btns .primary:hover {

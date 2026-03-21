@@ -241,7 +241,7 @@
   .head {
     flex-shrink: 0;
     padding: 0.5rem 0.75rem;
-    font-size: 0.75rem;
+    font-size: 1rem;
     text-transform: uppercase;
     letter-spacing: 0.06em;
     color: var(--pd-muted);
@@ -309,13 +309,13 @@
     background: var(--pd-surface);
     border: 1px solid var(--pd-error);
     color: var(--pd-error);
-    font-size: 0.82rem;
+    font-size: 1rem;
     z-index: 1;
   }
 
   .placeholder {
     margin: 2rem 1rem;
     color: var(--pd-muted);
-    font-size: 0.9rem;
+    font-size: 1rem;
   }
 </style>

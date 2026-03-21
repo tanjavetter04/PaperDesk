@@ -294,7 +294,7 @@
 
   .section-hint {
     margin: -0.35rem 0 0.65rem;
-    font-size: 0.8rem;
+    font-size: 1rem;
     color: var(--pd-muted);
     line-height: 1.35;
   }
@@ -355,7 +355,7 @@
 
   .templates .label {
     width: 100%;
-    font-size: 0.8rem;
+    font-size: 1rem;
     text-transform: uppercase;
     letter-spacing: 0.06em;
     color: var(--pd-muted);
@@ -374,7 +374,7 @@
   }
 
   .recent h2 {
-    font-size: 0.85rem;
+    font-size: 1rem;
     text-transform: uppercase;
     letter-spacing: 0.08em;
     color: var(--pd-muted);
@@ -406,7 +406,7 @@
   }
 
   .folders h2 {
-    font-size: 0.85rem;
+    font-size: 1rem;
     text-transform: uppercase;
     letter-spacing: 0.08em;
     color: var(--pd-muted);
@@ -439,11 +439,11 @@
 
   .folder-row-name {
     font-weight: 500;
-    font-size: 0.95rem;
+    font-size: 1rem;
   }
 
   .folder-row-path {
-    font-size: 0.78rem;
+    font-size: 1rem;
     color: var(--pd-muted);
     word-break: break-all;
     line-height: 1.3;
@@ -464,7 +464,7 @@
   .folder-detail-kicker {
     display: block;
     margin: 0 0 0.2rem;
-    font-size: 0.62rem;
+    font-size: 1rem;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.08em;
@@ -476,7 +476,7 @@
     border: none;
     color: var(--pd-accent);
     padding: 0 0 0.5rem;
-    font-size: 0.82rem;
+    font-size: 1rem;
     cursor: pointer;
   }
 
@@ -491,7 +491,7 @@
 
   .folder-detail-title {
     margin: 0 0 0.25rem;
-    font-size: 1.02rem;
+    font-size: 1rem;
     font-weight: 600;
     letter-spacing: -0.015em;
     line-height: 1.25;
@@ -500,7 +500,7 @@
 
   .folder-detail-path {
     margin: 0;
-    font-size: 0.72rem;
+    font-size: 1rem;
     color: var(--pd-muted);
     word-break: break-all;
     line-height: 1.35;
@@ -514,7 +514,7 @@
 
   .folder-projects-label {
     margin: 0 0 0.45rem;
-    font-size: 0.65rem;
+    font-size: 1rem;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.07em;
@@ -525,7 +525,7 @@
     margin-top: 0.75rem;
     padding-top: 0.75rem;
     border-top: 1px solid var(--pd-border);
-    font-size: 0.88rem;
+    font-size: 1rem;
     line-height: 1.45;
   }
 
@@ -541,7 +541,7 @@
     background: var(--pd-surface);
     color: var(--pd-text);
     text-align: left;
-    font-size: 0.82rem;
+    font-size: 1rem;
     cursor: pointer;
   }
 
@@ -558,11 +558,11 @@
   .folder-project-name {
     font-weight: 500;
     color: var(--pd-text);
-    font-size: 0.86rem;
+    font-size: 1rem;
   }
 
   .folder-project-path {
-    font-size: 0.7rem;
+    font-size: 1rem;
     color: var(--pd-muted);
     word-break: break-all;
     line-height: 1.28;

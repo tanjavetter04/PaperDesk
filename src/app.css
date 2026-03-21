@@ -11,12 +11,17 @@
   --pd-warning: #fcc419;
   --pd-font: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
   --pd-mono: "IBM Plex Mono", "Consolas", monospace;
+  --pd-editor-font-size: 14px;
 }
 
 *,
 *::before,
 *::after {
   box-sizing: border-box;
+}
+
+html {
+  font-size: var(--pd-editor-font-size);
 }
 
 html,

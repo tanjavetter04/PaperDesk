@@ -229,7 +229,7 @@
 
   .head {
     padding: 0.55rem 0.8rem;
-    font-size: 0.85rem;
+    font-size: 1rem;
     border-bottom: 1px solid var(--pd-border);
     background: var(--pd-surface);
   }
@@ -255,7 +255,7 @@
 
   .cm-host :global(.cm-scroller) {
     font-family: var(--pd-mono);
-    font-size: 14px;
+    font-size: 1rem;
     line-height: 1.48;
   }
 
@@ -264,19 +264,19 @@
     background: var(--pd-surface);
     border-bottom: 1px solid var(--pd-border);
     font-family: var(--pd-font, var(--pd-sans, system-ui, sans-serif));
-    font-size: 13px;
+    font-size: 1rem;
     padding: 8px 10px;
     gap: 8px 10px;
   }
 
   .cm-host :global(.cm-panel.cm-search label) {
     color: var(--pd-muted);
-    font-size: 12px;
+    font-size: 1rem;
   }
 
   .cm-host :global(.cm-panel.cm-search .cm-textfield) {
     font-family: var(--pd-mono);
-    font-size: 13px;
+    font-size: 1rem;
     line-height: 1.4;
     padding: 6px 10px;
     min-height: 2.1rem;
@@ -288,7 +288,7 @@
 
   .cm-host :global(.cm-panel.cm-search .cm-button) {
     font-family: var(--pd-font, inherit);
-    font-size: 12px;
+    font-size: 1rem;
     padding: 6px 12px;
     min-height: 2rem;
     background: #3a3f4b;

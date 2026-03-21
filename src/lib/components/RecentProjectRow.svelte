@@ -186,7 +186,7 @@
   }
 
   .thumb-fallback {
-    font-size: 0.65rem;
+    font-size: 1rem;
     font-weight: 600;
     letter-spacing: 0.06em;
     color: var(--pd-muted);
@@ -201,7 +201,7 @@
 
   .recent-title {
     font-weight: 500;
-    font-size: 0.9rem;
+    font-size: 1rem;
     line-height: 1.25;
     display: block;
     width: 100%;
@@ -221,7 +221,7 @@
     width: max-content;
     max-width: 100%;
     padding: 0.35rem 0.55rem;
-    font-size: 0.8rem;
+    font-size: 1rem;
     font-weight: 500;
     line-height: 1.35;
     text-align: center;
@@ -250,7 +250,7 @@
   }
 
   .recent-path {
-    font-size: 0.72rem;
+    font-size: 1rem;
     color: var(--pd-muted);
     line-height: 1.3;
     width: 100%;

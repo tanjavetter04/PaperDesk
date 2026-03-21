@@ -50,7 +50,7 @@
 
   .head {
     padding: 0.35rem 0.65rem;
-    font-size: 0.72rem;
+    font-size: 1rem;
     text-transform: uppercase;
     letter-spacing: 0.06em;
     color: var(--pd-muted);
@@ -66,7 +66,7 @@
   .empty {
     margin: 0.35rem 0.25rem;
     color: var(--pd-muted);
-    font-size: 0.85rem;
+    font-size: 1rem;
   }
 
   ul {
@@ -76,7 +76,7 @@
   }
 
   li {
-    font-size: 0.8rem;
+    font-size: 1rem;
     margin-bottom: 0.45rem;
     padding: 0;
     border-radius: 6px;
@@ -118,7 +118,7 @@
     display: block;
     font-family: var(--pd-mono);
     color: var(--pd-muted);
-    font-size: 0.75rem;
+    font-size: 1rem;
     margin-bottom: 0.2rem;
   }
 

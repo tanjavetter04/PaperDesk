@@ -53,13 +53,13 @@
 
   .modal h2 {
     margin: 0 0 0.5rem;
-    font-size: 0.95rem;
+    font-size: 1rem;
     font-weight: 600;
   }
 
   .body {
     margin: 0 0 0.9rem;
-    font-size: 0.82rem;
+    font-size: 1rem;
     line-height: 1.45;
     color: var(--pd-text);
     white-space: pre-wrap;
@@ -78,7 +78,7 @@
     background: color-mix(in srgb, var(--pd-accent) 18%, var(--pd-bg));
     color: var(--pd-text);
     cursor: pointer;
-    font-size: 0.82rem;
+    font-size: 1rem;
   }
 
   .primary:hover {
