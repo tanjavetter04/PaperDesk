@@ -10,7 +10,7 @@ use parking_lot::Mutex;
 use rustc_hash::FxHashMap;
 use typst::diag::{FileError, FileResult};
 use typst::foundations::{Bytes, Datetime, Dict};
-use typst::syntax::{FileId, Lines, Source, VirtualPath};
+use typst::syntax::{FileId, Source, VirtualPath};
 use typst::text::{Font, FontBook};
 use typst::utils::LazyHash;
 use typst::{Library, LibraryExt, World};
@@ -101,10 +101,6 @@ impl PaperDeskWorld {
         })
     }
 
-    pub fn main_id(&self) -> FileId {
-        self.main
-    }
-
     pub fn root(&self) -> &Path {
         &self.root
     }
@@ -121,21 +117,6 @@ impl PaperDeskWorld {
         }
         let Now::System(time_lock) = &mut self.now;
         time_lock.take();
-    }
-
-    #[track_caller]
-    pub fn lookup(&self, id: FileId) -> Lines<String> {
-        self.slot(id, |slot| {
-            if let Some(source) = slot.source.get() {
-                let source = source.as_ref().expect("file is not valid");
-                source.lines().clone()
-            } else if let Some(bytes) = slot.file.get() {
-                let bytes = bytes.as_ref().expect("file is not valid");
-                Lines::try_from(bytes).expect("file is not valid utf-8")
-            } else {
-                panic!("file id does not point to any source file");
-            }
-        })
     }
 
     fn slot<F, T>(&self, id: FileId, f: F) -> T
@@ -206,10 +187,6 @@ impl FileSlot {
         Self { id, file: SlotCell::new(), source: SlotCell::new() }
     }
 
-    fn accessed(&self) -> bool {
-        self.source.accessed() || self.file.accessed()
-    }
-
     fn reset(&mut self) {
         self.source.reset();
         self.file.reset();
@@ -259,16 +236,8 @@ impl<T: Clone> SlotCell<T> {
         Self { data: None, fingerprint: 0, accessed: false }
     }
 
-    fn accessed(&self) -> bool {
-        self.accessed
-    }
-
     fn reset(&mut self) {
         self.accessed = false;
-    }
-
-    fn get(&self) -> Option<&FileResult<T>> {
-        self.data.as_ref()
     }
 
     fn get_or_init(
