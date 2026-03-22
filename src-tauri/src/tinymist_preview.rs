@@ -101,7 +101,7 @@ fn materialized_bundled_tinymist(bundled: &Path, cache_dir: &Path) -> io::Result
     Ok(dest)
 }
 
-fn configure_background_child(cmd: &mut Command) {
+fn configure_background_child(_cmd: &mut Command) {
     #[cfg(target_os = "windows")]
     {
         // `tinymist.exe` is a console app; without this Windows may flash a console window
