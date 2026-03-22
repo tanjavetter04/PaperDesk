@@ -101,18 +101,15 @@ fn materialized_bundled_tinymist(bundled: &Path, cache_dir: &Path) -> io::Result
     Ok(dest)
 }
 
+#[cfg(target_os = "windows")]
 fn configure_background_child(cmd: &mut Command) {
-    #[cfg(target_os = "windows")]
-    {
-        // `tinymist.exe` is a console app; without this Windows may flash a console window
-        // when PaperDesk starts the preview process from the GUI app.
-        cmd.creation_flags(CREATE_NO_WINDOW);
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = cmd;
-    }
+    // `tinymist.exe` is a console app; without this Windows may flash a console window
+    // when PaperDesk starts the preview process from the GUI app.
+    cmd.creation_flags(CREATE_NO_WINDOW);
 }
+
+#[cfg(not(target_os = "windows"))]
+fn configure_background_child(_cmd: &mut Command) {}
 
 fn parse_data_plane_url(line: &str) -> Option<String> {
     let idx = line.find(DATA_PLANE_PREFIX)?;
