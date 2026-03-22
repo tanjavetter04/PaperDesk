@@ -9,7 +9,7 @@ const K_DIR = "paperdesk.defaultProjectDir";
 const K_BIB = "paperdesk.zoteroBibRelativePath";
 const K_SPELL_LANG = "paperdesk.spellcheckLang";
 const K_SPELL_LEGACY = "paperdesk.spellcheck";
-const DEFAULT_BIB_REL = "literatur.bib";
+const DEFAULT_BIB_REL = "literature.bib";
 
 function readSpellcheckLanguage(): SpellcheckLanguage {
   if (typeof localStorage === "undefined") return "de";

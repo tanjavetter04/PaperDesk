@@ -24,7 +24,7 @@ A local, privacy-focused writing environment for [Typst](https://typst.app/) doc
 
 ### Compilation and Export
 
-- **Compile** Typst projects with inline diagnostics (errors and warnings with file, line, and column)
+- **Compile** Typst projects
 - **Export to PDF** via a save dialog
 - **Diagnostics panel** listing all errors and warnings, with click-to-jump navigation
 
@@ -72,84 +72,49 @@ A local, privacy-focused writing environment for [Typst](https://typst.app/) doc
 - **Diff view** showing changes between any snapshot and the current state
 - **Restore** the project to any previous snapshot
 
-### Zotero and Bibliography Integration
-
-- Watches a `.bib` file in the project for external changes (e.g. from Zotero with Better BibTeX auto-export)
-- Automatically refreshes diagnostics, editor, and preview when the bibliography changes
-- Conflict detection when the `.bib` file changes while the editor has unsaved modifications
-
 ### Settings
 
 - **Language**: German or English (UI and autocomplete labels)
 - **Theme**: light or dark
 - **Font size**: adjustable editor font
 - **Default project folder**: preset directory for dialogs
-- **Zotero bibliography path**: relative path to the `.bib` file
+- **Zotero bibliography path**: relative path to the `.bib` file PaperDesk should watch (see **References & Zotero** below)
 - **Spell check language**: off, German, or English
 - **AI configuration**: enable/disable, API key, base URL, model
 
-### Internationalization
+### References & Zotero (local `.bib`)
 
-- Full **German** and **English** UI translations (~150+ message keys)
-- Dynamic document title and autocomplete section labels adapt to the selected language
+PaperDesk does **not** talk to Zotero over the network. The usual workflow: **Zotero** with **[Better BibTeX](https://retorque.re/zotero-better-bibtex/)** keeps a `.bib` file **inside your project** up to date; PaperDesk **watches** that path (set in **Settings**) and refreshes diagnostics, the open editor tab, and the live preview when the file changes on disk.
 
----
+**What PaperDesk does**
 
-## Zotero and bibliography (local setup)
+- Watches the bibliography **relative path** from **Settings** (default: `literature.bib`).
+- Refreshes diagnostics, the editor, and the live preview when that file changes on disk.
+- Warns if the `.bib` changes while you still have **unsaved** editor changes.
 
-PaperDesk does **not** talk to Zotero directly. The usual workflow is: **Zotero** (with **Better BibTeX**) keeps a `.bib` file in your project folder up to date; PaperDesk **watches** that file and refreshes diagnostics, the open editor tab, and the live preview when it changes.
+**What you put in Typst**
 
-### 1. Install Better BibTeX
+- Use `#bibliography("…")` with the **same** path as in Zotero export and in Settings.
+- Cite with `@citationkey` or `#cite(<citationkey>)` as in the [Typst bibliography documentation](https://typst.app/docs/reference/model/bibliography/).
 
-1. Open [Better BibTeX for Zotero](https://retorque.re/zotero-better-bibtex/).
-2. Download the `.xpi` for your Zotero version (Zotero 6 vs 7 builds differ).
-3. In Zotero: **Tools → Add-ons** (or **Edit → Settings → Advanced → Files and Folders** depending on version) → install the extension → restart Zotero when prompted.
+**Zotero setup (step by step)**
 
-### 2. Export a collection or library to your project
+1. **Install Better BibTeX** — Open the [Better BibTeX for Zotero](https://retorque.re/zotero-better-bibtex/) page, download the `.xpi` for your Zotero version (6 vs 7 differ). In Zotero: **Tools → Add-ons** (or **Edit → Settings → Advanced → Files and Folders**, depending on version) → install → restart Zotero when prompted.
 
-Auto-export (“Keep updated”) only applies to a **library**, **collection** (folder), or **group** — not to a single item.
+2. **Export a collection or library into the project** — Auto-export (“Keep updated”) applies to a **library**, **collection** (folder), or **group**, not a single item. Select **My Library** or a collection → right-click → **Export Collection…** (or **File → Export Library…**). Choose **Better BibTeX** or **Better BibLaTeX** (good for Typst / BibLaTeX-style bibliographies). Save the file **inside your PaperDesk project**, e.g. `literature.bib` next to `main.typ`.
 
-1. In the left pane, select **My Library** or a **collection** that contains the references you want in this project.
-2. Right-click the selection → **Export Collection…** (or use **File → Export Library…** for the whole library).
-3. Choose format **Better BibTeX** or **Better BibLaTeX** (recommended for Typst / BibLaTeX-style bibliographies).
-4. Save the file **inside your PaperDesk project folder**, e.g. `literatur.bib` next to `main.typ`.
+3. **Enable “Keep updated”** — In the export dialog, turn on **Keep updated** (sometimes labeled “Automatically update”). Zotero will rewrite that `.bib` whenever the exported set changes.
 
-### 3. Enable “Keep updated”
+   **If that option is missing or fails:** use a **Better BibTeX** export format, not plain “BibTeX”. On **Linux**, Zotero **Flatpak/Snap** may not be allowed to write under `~/Documents` — prefer a build from [zotero.org](https://www.zotero.org/), adjust sandbox paths, or export somewhere writable. You can always **re-export manually**; PaperDesk still picks up file changes on disk.
 
-In the export dialog, enable **Keep updated** (wording may be “Automatically update” depending on version). After that, Zotero rewrites the same `.bib` whenever the exported collection changes.
+4. **Match PaperDesk settings** — In **Settings**, set **Zotero bibliography (relative path in project)** to that file’s path from the project root (default `literature.bib`; use e.g. `refs/literature.bib` if you saved it there).
 
-**If “Keep updated” is unavailable or fails:**
+5. **Wire it in `main.typ`**
 
-- You must use a **Better BibTeX** export format, not plain “BibTeX”.
-- On **Linux**, Zotero **Flatpak/Snap** may be unable to write to arbitrary folders (e.g. under `~/Documents`). Use a native Zotero build from [zotero.org](https://www.zotero.org/), widen sandbox permissions, or export to a path the sandbox allows.
-- Without auto-export, you can still **re-export manually** whenever you change references; PaperDesk will pick up file changes on disk.
+   ```typst
+   #bibliography("literature.bib")
+   ```
 
-### 4. Match the path in PaperDesk
+   Use the **same** path as in step 2 and in Settings.
 
-In **Settings**, set **Zotero bibliography (relative path in project)** to the path of that file relative to the project root (default: `literatur.bib`). If you use e.g. `refs/literatur.bib`, enter exactly that.
-
-### 5. Use the file in Typst
-
-In `main.typ`:
-
-```typst
-#bibliography("literatur.bib")
-```
-
-Use the same filename/path as in step 2 and in PaperDesk settings. Then cite with `@citationkey` or `#cite(<citationkey>)` as in the [Typst bibliography documentation](https://typst.app/docs/reference/model/bibliography/).
-
----
-
-**Note:** Sync is **one-way** (Zotero → file). Editing the `.bib` in PaperDesk does not update Zotero.
-
-## Live preview (tinymist)
-
-The Typst live preview uses **tinymist**. On `cargo build` / `cargo tauri build`, `src-tauri/build.rs` downloads a matching [tinymist release](https://github.com/Myriad-Dreamin/tinymist/releases) for the current Rust `TARGET` into `src-tauri/resources/bin/` (gitignored). That folder is bundled with the app via `tauri.conf.json` → `bundle.resources`.
-
-- **Override binary**: set `TINYMIST_PATH` to an absolute path.
-- **Skip download** (e.g. sandboxed CI): set `TINYMIST_SKIP_BUNDLE=1` and place `tinymist` / `tinymist.exe` in `src-tauri/resources/bin/` yourself, or rely on `tinymist` on `PATH`.
-- **Release tag** is pinned in `src-tauri/build.rs` (`TINYMIST_RELEASE_TAG`); bump it when you change Typst/tinymist expectations.
-
-## Recommended IDE Setup
-
-[VS Code](https://code.visualstudio.com/) + [Svelte](https://marketplace.visualstudio.com/items?itemName=svelte.svelte-vscode) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer).
+**Note:** Sync is **one-way** (Zotero → file). Editing the `.bib` only in PaperDesk does not update Zotero.
