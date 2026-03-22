@@ -88,6 +88,12 @@ jobs:
           releaseBody: |
             **Installers (use these):** Windows (NSIS `.exe`), Linux (AppImage + `.deb`), macOS (DMG).
 
+            **Linux (AppImage):**
+
+            Please note that you need to make the downloaded AppImage executable before running it:
+
+            `chmod +x PaperDesk_*.AppImage`
+
             GitHub always adds **Source code (zip/tar.gz)** for the tag; that is not the app — download the files above under **Assets**.
           generateReleaseNotes: true
           prerelease: false

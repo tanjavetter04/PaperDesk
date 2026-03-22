@@ -31,11 +31,10 @@ export async function renderFirstPageThumbFromBase64(
   } catch {
     return null;
   }
-  const blobUrl = URL.createObjectURL(
-    new Blob([bytes], { type: "application/pdf" }),
-  );
   try {
-    const loadingTask = pdfjs.getDocument({ url: blobUrl });
+    // Use in-memory data instead of a blob: URL. WebKitGTK (Linux Tauri / AppImage) often rejects
+    // blob URLs for pdf.js `getDocument`, while `{ data }` works reliably.
+    const loadingTask = pdfjs.getDocument({ data: bytes });
     const pdf = await loadingTask.promise;
     try {
       const page = await pdf.getPage(1);
@@ -56,7 +55,5 @@ export async function renderFirstPageThumbFromBase64(
     }
   } catch {
     return null;
-  } finally {
-    URL.revokeObjectURL(blobUrl);
   }
 }
