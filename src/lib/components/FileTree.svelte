@@ -346,7 +346,8 @@
       <span class="label">{node.name}</span>
     </button>
   {:else}
-    <div
+    <button
+      type="button"
       class="row file not-editor"
       style:padding-left={`${0.5 + depth * 0.75}rem`}
       title={t("fileTree.notEditorFile")}
@@ -357,7 +358,7 @@
       <span class="row-icon">{@render fileGlyph()}</span>
       <span class="label">{node.name}</span>
       <span class="not-editor-mark">{@render notEditorGlyph()}</span>
-    </div>
+    </button>
   {/if}
 {/snippet}
 

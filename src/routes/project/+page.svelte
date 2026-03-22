@@ -55,7 +55,6 @@
   let selectedPath = $state<string | null>(null);
   let buffer = $state("");
   let saveLabel = $state<"saved" | "dirty" | "saving">("saved");
-  let previewLabel = $state<"idle" | "starting" | "live" | "err">("idle");
   let diagnostics = $state<CompileDiagnostic[]>([]);
   let diagnosticFocus = $state<{ tick: number; target: CompileDiagnostic | null }>({
     tick: 0,
@@ -100,6 +99,9 @@
   let diagnosticsTimer: ReturnType<typeof setTimeout> | null = null;
   let previewSourceScrollTimer: ReturnType<typeof setTimeout> | null = null;
   let historyIdleTimer: ReturnType<typeof setTimeout> | null = null;
+  let lastPreviewSourceScroll:
+    | { relativePath: string; line0: number; character: number }
+    | null = null;
 
   const HISTORY_IDLE_MS = 10_000;
   let bibTinymistTimer: ReturnType<typeof setTimeout> | null = null;
@@ -570,7 +572,7 @@
       } catch {
         /* best effort */
       }
-      const watch = appSettings.zoteroBibPath?.trim();
+      const watch = appSettings.zoteroBibRelativePath?.trim();
       if (watch && selectedPath?.endsWith(".bib")) {
         void restartBibWatcher(selectedPath);
       }
@@ -617,7 +619,7 @@
       } catch {
         /* best effort */
       }
-      const watch = appSettings.zoteroBibPath?.trim();
+      const watch = appSettings.zoteroBibRelativePath?.trim();
       if (watch && selectedPath?.endsWith(".bib")) {
         void restartBibWatcher(selectedPath);
       }
@@ -946,7 +948,7 @@
     previewError = null;
     const hadUrl = previewUrl !== null;
     if (restart || !hadUrl) {
-      previewLabel = "starting";
+      lastPreviewSourceScroll = null;
     }
     try {
       const url = restart
@@ -954,11 +956,11 @@
         : await startTinymistPreview();
       if (previewUrl !== url) {
         previewUrl = url;
+        lastPreviewSourceScroll = null;
       }
-      previewLabel = "live";
     } catch (e) {
       previewUrl = null;
-      previewLabel = "err";
+      lastPreviewSourceScroll = null;
       previewError = String(e);
     }
   }
@@ -1017,17 +1019,35 @@
     }, DIAGNOSTICS_DEBOUNCE_MS);
   }
 
-  function schedulePreviewSourceScroll(line0: number, character: number) {
+  function schedulePreviewSourceScroll(pos: {
+    line0: number;
+    character: number;
+    reason: "cursor" | "edit";
+  }) {
     if (!selectedPath?.endsWith(".typ")) return;
     if (!previewUrl) return;
     if (splitDragging) return;
     const rel = selectedPath;
+    const last = lastPreviewSourceScroll;
+    const samePath = last?.relativePath === rel;
+    const sameLine = samePath && last?.line0 === pos.line0;
+    const samePos = sameLine && last?.character === pos.character;
+    if (samePos) return;
+    // Typing on the same source line re-triggers tinymist's marker animation without
+    // meaningfully changing the visible target, so only resync on actual line changes.
+    if (pos.reason === "edit" && sameLine) return;
     if (previewSourceScrollTimer) clearTimeout(previewSourceScrollTimer);
+    const delay = pos.reason === "cursor" ? 0 : PREVIEW_SOURCE_SCROLL_DEBOUNCE_MS;
     previewSourceScrollTimer = setTimeout(() => {
       previewSourceScrollTimer = null;
       if (selectedPath !== rel) return;
-      void tinymistPanelScrollToSource(rel, line0, character).catch(() => {});
-    }, PREVIEW_SOURCE_SCROLL_DEBOUNCE_MS);
+      lastPreviewSourceScroll = {
+        relativePath: rel,
+        line0: pos.line0,
+        character: pos.character,
+      };
+      void tinymistPanelScrollToSource(rel, pos.line0, pos.character).catch(() => {});
+    }, delay);
   }
 
   async function refreshDiagnostics() {
@@ -1074,6 +1094,7 @@
       clearTimeout(previewSourceScrollTimer);
       previewSourceScrollTimer = null;
     }
+    lastPreviewSourceScroll = null;
     const prevPath = selectedPath;
     const prevBuffer = buffer;
     if (prevPath) {
@@ -1196,18 +1217,6 @@
     };
   }
 
-  function saveStatusLabel(): string {
-    if (saveLabel === "saved") return t("status.saved");
-    if (saveLabel === "saving") return t("status.saving");
-    return t("status.dirty");
-  }
-
-  function previewStatusLabel(): string {
-    if (previewLabel === "starting") return t("preview.starting");
-    if (previewLabel === "live") return t("preview.live");
-    if (previewLabel === "err") return t("preview.error");
-    return t("preview.idle");
-  }
 </script>
 
 <div class="ide">
@@ -1238,10 +1247,6 @@
       </svg>
     </button>
     <span class="proj" title={rootPath ?? ""}>{rootPath ?? ""}</span>
-    <span class="status">
-      <span class="pill" data-state={saveLabel}>{saveStatusLabel()}</span>
-      <span class="pill" data-state={previewLabel}>{previewStatusLabel()}</span>
-    </span>
     <span class="spacer"></span>
     <button
       type="button"
@@ -1362,8 +1367,7 @@
         aiEditorRef={aiEditorRef}
         onDocumentChange={onEditorChange}
         onReady={onEditorReady}
-        onTypstPreviewSourceScroll={(pos) =>
-          schedulePreviewSourceScroll(pos.line0, pos.character)}
+        onTypstPreviewSourceScroll={schedulePreviewSourceScroll}
         compileDiagnostics={diagnostics}
         focusDiagnosticRequest={diagnosticFocus}
         {previewScroll}
@@ -1642,41 +1646,6 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  .status {
-    display: flex;
-    gap: 0.35rem;
-  }
-
-  .pill {
-    font-size: 1rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    padding: 0.2rem 0.45rem;
-    border-radius: 4px;
-    background: var(--pd-bg);
-    color: var(--pd-muted);
-  }
-
-  .pill[data-state="dirty"] {
-    color: var(--pd-warning);
-  }
-
-  .pill[data-state="saving"] {
-    color: var(--pd-accent);
-  }
-
-  .pill[data-state="live"] {
-    color: #69db7c;
-  }
-
-  .pill[data-state="starting"] {
-    color: var(--pd-accent);
-  }
-
-  .pill[data-state="err"] {
-    color: var(--pd-error);
   }
 
   .spacer {

@@ -84,6 +84,7 @@
     onTypstPreviewSourceScroll?: (pos: {
       line0: number;
       character: number;
+      reason: "cursor" | "edit";
     }) => void;
     compileDiagnostics?: CompileDiagnostic[];
     focusDiagnosticRequest?: { tick: number; target: CompileDiagnostic | null };
@@ -281,7 +282,7 @@
     onChange: (s: string) => void,
     onCursor: ((utf8: number) => void) | undefined,
     onPreviewSrcScroll:
-      | ((pos: { line0: number; character: number }) => void)
+      | ((pos: { line0: number; character: number; reason: "cursor" | "edit" }) => void)
       | undefined,
     cmds: HostCommands | undefined,
     typstFile: boolean,
@@ -504,6 +505,7 @@
           onPreviewSrcScroll({
             line0: ln.number - 1,
             character: head - ln.from,
+            reason: u.docChanged ? "edit" : "cursor",
           });
         }
       }),
@@ -520,7 +522,7 @@
     if (!p) {
       view?.destroy();
       view = null;
-      el.innerHTML = "";
+      el.textContent = "";
       return;
     }
 

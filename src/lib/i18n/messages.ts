@@ -237,7 +237,7 @@ const de: Table = {
   "settings.zoteroBibPath":
     "Zotero-Bibliographie (relativer Pfad im Projekt)",
   "settings.zoteroBibHint":
-    "Zotero: Better BibTeX installieren, Export ins Projekt (z. B. literatur.bib) und „Keep updated“ aktivieren. PaperDesk beobachtet diese Datei und aktualisiert Vorschau und Diagnose.",
+    "Zotero: Better BibTeX installieren, Export ins Projekt (z. B. literature.bib) und „Keep updated“ aktivieren. PaperDesk beobachtet diese Datei und aktualisiert Vorschau und Diagnose.",
   "settings.spellcheckLanguage": "Rechtschreibprüfung (Editor)",
   "settings.spellLangOff": "Aus",
   "settings.spellLangDe": "Deutsch",
@@ -476,7 +476,7 @@ const en: Table = {
   "settings.defaultFolderNone": "None (system default)",
   "settings.zoteroBibPath": "Zotero bibliography (relative path in project)",
   "settings.zoteroBibHint":
-    "In Zotero: install Better BibTeX, export into the project (e.g. literatur.bib), and enable “Keep updated”. PaperDesk watches this file and refreshes preview and diagnostics.",
+    "In Zotero: install Better BibTeX, export into the project (e.g. literature.bib), and enable “Keep updated”. PaperDesk watches this file and refreshes preview and diagnostics.",
   "settings.spellcheckLanguage": "Spell checking (editor)",
   "settings.spellLangOff": "Off",
   "settings.spellLangDe": "German",
