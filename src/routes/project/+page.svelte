@@ -55,7 +55,6 @@
   let selectedPath = $state<string | null>(null);
   let buffer = $state("");
   let saveLabel = $state<"saved" | "dirty" | "saving">("saved");
-  let previewLabel = $state<"idle" | "starting" | "live" | "err">("idle");
   let diagnostics = $state<CompileDiagnostic[]>([]);
   let diagnosticFocus = $state<{ tick: number; target: CompileDiagnostic | null }>({
     tick: 0,
@@ -949,7 +948,6 @@
     previewError = null;
     const hadUrl = previewUrl !== null;
     if (restart || !hadUrl) {
-      previewLabel = "starting";
       lastPreviewSourceScroll = null;
     }
     try {
@@ -960,11 +958,9 @@
         previewUrl = url;
         lastPreviewSourceScroll = null;
       }
-      previewLabel = "live";
     } catch (e) {
       previewUrl = null;
       lastPreviewSourceScroll = null;
-      previewLabel = "err";
       previewError = String(e);
     }
   }
@@ -1221,18 +1217,6 @@
     };
   }
 
-  function saveStatusLabel(): string {
-    if (saveLabel === "saved") return t("status.saved");
-    if (saveLabel === "saving") return t("status.saving");
-    return t("status.dirty");
-  }
-
-  function previewStatusLabel(): string {
-    if (previewLabel === "starting") return t("preview.starting");
-    if (previewLabel === "live") return t("preview.live");
-    if (previewLabel === "err") return t("preview.error");
-    return t("preview.idle");
-  }
 </script>
 
 <div class="ide">
@@ -1263,10 +1247,6 @@
       </svg>
     </button>
     <span class="proj" title={rootPath ?? ""}>{rootPath ?? ""}</span>
-    <span class="status">
-      <span class="pill" data-state={saveLabel}>{saveStatusLabel()}</span>
-      <span class="pill" data-state={previewLabel}>{previewStatusLabel()}</span>
-    </span>
     <span class="spacer"></span>
     <button
       type="button"
@@ -1666,41 +1646,6 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  .status {
-    display: flex;
-    gap: 0.35rem;
-  }
-
-  .pill {
-    font-size: 1rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    padding: 0.2rem 0.45rem;
-    border-radius: 4px;
-    background: var(--pd-bg);
-    color: var(--pd-muted);
-  }
-
-  .pill[data-state="dirty"] {
-    color: var(--pd-warning);
-  }
-
-  .pill[data-state="saving"] {
-    color: var(--pd-accent);
-  }
-
-  .pill[data-state="live"] {
-    color: #69db7c;
-  }
-
-  .pill[data-state="starting"] {
-    color: var(--pd-accent);
-  }
-
-  .pill[data-state="err"] {
-    color: var(--pd-error);
   }
 
   .spacer {
