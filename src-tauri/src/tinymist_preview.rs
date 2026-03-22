@@ -106,7 +106,7 @@ fn configure_background_child(_cmd: &mut Command) {
     {
         // `tinymist.exe` is a console app; without this Windows may flash a console window
         // when PaperDesk starts the preview process from the GUI app.
-        cmd.creation_flags(CREATE_NO_WINDOW);
+        _cmd.creation_flags(CREATE_NO_WINDOW);
     }
 }
 
