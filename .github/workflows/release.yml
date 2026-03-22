@@ -73,6 +73,8 @@ jobs:
       - name: Check frontend
         run: npm run check
 
+      # Uploads platform installers as release assets (NSIS, AppImage, .deb, DMG).
+      # GitHub still shows automatic “Source code” zip/tar links on every release; those cannot be disabled.
       - name: Build Tauri app and publish release
         uses: tauri-apps/tauri-action@v0.6.2
         env:
@@ -80,8 +82,12 @@ jobs:
         with:
           tauriScript: npm run tauri
           args: ${{ matrix.args }}
+          includeUpdaterJson: false
           tagName: ${{ env.RELEASE_TAG }}
           releaseName: PaperDesk ${{ env.RELEASE_TAG }}
-          releaseBody: "Built from tag `${{ env.RELEASE_TAG }}`."
+          releaseBody: |
+            **Installers (use these):** Windows (NSIS `.exe`), Linux (AppImage + `.deb`), macOS (DMG).
+
+            GitHub always adds **Source code (zip/tar.gz)** for the tag; that is not the app — download the files above under **Assets**.
           generateReleaseNotes: true
           prerelease: false
