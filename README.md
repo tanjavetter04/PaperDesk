@@ -8,7 +8,6 @@ A local, privacy-focused writing environment for [Typst](https://typst.app/) doc
 
 - Full **Typst editor** powered by CodeMirror 6 with syntax highlighting, line numbers, line wrapping, and active-line highlighting
 - **Typst autocomplete** for commands (`#set`, `#show`, `#import`, …), symbols (`sym.`), math mode (Greek letters, operators, functions), and more
-- **Markdown** editing support for `.md` files
 - Configurable **font size** (12–22 px)
 - **Light and dark themes**
 - **Find and replace** via CodeMirror search
