@@ -9,6 +9,38 @@ use std::path::{Path, PathBuf};
 /// Keep in sync with the GitHub release used for prebuilt binaries.
 const TINYMIST_RELEASE_TAG: &str = "v0.14.10";
 
+fn fetch_release_bytes(url: &str) -> Result<Vec<u8>, ureq::Error> {
+    let ua = concat!(
+        "PaperDesk/",
+        env!("CARGO_PKG_VERSION"),
+        " (tinymist release fetch)"
+    );
+    let agent = ureq::builder().user_agent(ua).build();
+    let mut last_err = None;
+    for attempt in 0..6 {
+        if attempt > 0 {
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            println!("cargo:warning=tinymist download retry {attempt}/5 for {url}…");
+        }
+        let mut req = agent.get(url);
+        if let Ok(token) = std::env::var("GITHUB_TOKEN") {
+            let token = token.trim();
+            if !token.is_empty() {
+                req = req.set("Authorization", &format!("Bearer {token}"));
+            }
+        }
+        match req.call() {
+            Ok(resp) => {
+                let mut body = Vec::new();
+                resp.into_reader().read_to_end(&mut body)?;
+                return Ok(body);
+            }
+            Err(e) => last_err = Some(e),
+        }
+    }
+    Err(last_err.expect("at least one attempt"))
+}
+
 fn main() {
     tauri_build::build();
 
@@ -58,25 +90,15 @@ fn main() {
 
     println!("cargo:warning=fetching tinymist {TINYMIST_RELEASE_TAG} for {target}…");
 
-    let mut body = Vec::new();
-    let resp = ureq::get(&url).call().unwrap_or_else(|e| {
+    let body = fetch_release_bytes(&url).unwrap_or_else(|e| {
         panic!(
             "tinymist download failed (GET {url}: {e}).\n\
              Install tinymist on PATH, place it at {},\n\
-             or set TINYMIST_SKIP_BUNDLE=1 if you vendor the binary yourself.",
+             or set TINYMIST_SKIP_BUNDLE=1 if you vendor the binary yourself.\n\
+             On GitHub Actions, ensure GITHUB_TOKEN is in the environment for this build.",
             dest.display()
         );
     });
-    resp.into_reader()
-        .read_to_end(&mut body)
-        .unwrap_or_else(|e| {
-            panic!(
-                "tinymist download failed (read body: {e}).\n\
-                 Install tinymist on PATH, place it at {},\n\
-                 or set TINYMIST_SKIP_BUNDLE=1 if you vendor the binary yourself.",
-                dest.display()
-            );
-        });
 
     let _ = fs::remove_file(&dest_part);
     if is_windows {

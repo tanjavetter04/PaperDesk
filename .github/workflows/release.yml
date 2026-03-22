@@ -18,6 +18,7 @@ jobs:
   release:
     env:
       RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+      GITHUB_TOKEN: ${{ github.token }}
 
     strategy:
       fail-fast: false
