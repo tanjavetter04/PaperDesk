@@ -111,6 +111,21 @@ fn configure_background_child(cmd: &mut Command) {
 #[cfg(not(target_os = "windows"))]
 fn configure_background_child(_cmd: &mut Command) {}
 
+#[cfg(target_os = "linux")]
+fn sanitize_child_env_for_appimage(cmd: &mut Command) {
+    if std::env::var_os("APPIMAGE").is_none() && std::env::var_os("APPDIR").is_none() {
+        return;
+    }
+    // AppImage injects helper vars plus `LD_LIBRARY_PATH`; inherited children may fail to start
+    // or pick incompatible bundled libraries instead of system ones.
+    for key in ["APPIMAGE", "APPDIR", "ARGV0", "OWD", "LD_LIBRARY_PATH"] {
+        cmd.env_remove(key);
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn sanitize_child_env_for_appimage(_cmd: &mut Command) {}
+
 fn parse_data_plane_url(line: &str) -> Option<String> {
     let idx = line.find(DATA_PLANE_PREFIX)?;
     let host = line[idx + DATA_PLANE_PREFIX.len()..].trim();
@@ -411,6 +426,7 @@ pub fn ensure_running(app: &tauri::AppHandle, state: &AppState) -> Result<String
         .stdout(Stdio::null())
         .stderr(Stdio::piped());
     configure_background_child(&mut cmd);
+    sanitize_child_env_for_appimage(&mut cmd);
 
     let mut child = cmd.spawn().map_err(|e| {
         format!(
